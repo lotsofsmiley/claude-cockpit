@@ -1,7 +1,7 @@
 'use strict';
 /* Electron main process. Ships NO native modules — it only ensures the daemon is
  * up and loads the renderer, which talks to the daemon over WebSocket. */
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -35,9 +35,22 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // The menu bar is removed, so keep two dev accelerators that don't clash with
+  // terminal keys: F12 / Ctrl+Shift+I -> devtools, Ctrl+Shift+R -> reload renderer.
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    const ctrl = input.control || input.meta;
+    if (input.key === 'F12' || (ctrl && input.shift && input.key.toLowerCase() === 'i')) {
+      win.webContents.toggleDevTools(); e.preventDefault();
+    } else if (ctrl && input.shift && input.key.toLowerCase() === 'r') {
+      win.webContents.reload(); e.preventDefault();
+    }
+  });
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null); // remove the File/Edit/View/Window bar — reclaim the space
   await ensureDaemon();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
