@@ -15,6 +15,7 @@ fit.fit();
 
 let ws = null;
 let activeId = null;
+let bootstrapped = false;
 const sessions = new Map();
 
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
@@ -49,13 +50,19 @@ function connect() {
     switch (m.type) {
       case 'hello-ok':
         statusEl.textContent = `daemon pid ${m.daemon.pid} · v${m.daemon.version}`;
-        send({ type: 'list' });
+        // the daemon pushes a 'sessions' message right after hello-ok — no need to ask
         break;
       case 'sessions':
         sessions.clear();
         m.sessions.forEach((s) => sessions.set(s.id, s));
-        if (sessions.size === 0) send({ type: 'spawn', name: 'pwsh', cwd: null });
-        else if (!activeId) attach([...sessions.keys()][0]);
+        if (!bootstrapped) {
+          // run the open-or-spawn decision exactly once, so we never double-spawn
+          bootstrapped = true;
+          if (sessions.size === 0) send({ type: 'spawn', name: 'pwsh', cwd: null });
+          else attach([...sessions.keys()][0]);
+        } else if (activeId && !sessions.has(activeId)) {
+          activeId = null; // the session we were viewing went away
+        }
         renderTabs();
         break;
       case 'spawned':
