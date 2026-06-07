@@ -26,6 +26,8 @@ const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
 const CLAUDE_HOOKS_FILE = path.join(STATE_DIR, 'claude-hooks.json');
 const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
+const MCP_CONFIG_FILE = path.join(STATE_DIR, 'mcp.json');
+const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
 const STATE_BY_EVENT = {
   SessionStart: 'running', UserPromptSubmit: 'running',
   PreToolUse: 'running', PostToolUse: 'running',
@@ -77,6 +79,12 @@ function writeClaudeHooks() {
   const hooks = {};
   for (const e of HOOK_EVENTS) hooks[e] = [{ hooks: [{ type: 'command', command: hookCmd(e) }] }];
   try { fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify({ hooks }, null, 2)); } catch { /* ignore */ }
+}
+// MCP config the cockpit's Claude templates load via --mcp-config, so a claude
+// session running in a tab can operate the cockpit (spawn/rename/move/notify...).
+function writeMcpConfig() {
+  const cfg = { mcpServers: { 'coclaude-pit': { command: process.execPath, args: [MCP_SERVER_PATH] } } };
+  try { fs.writeFileSync(MCP_CONFIG_FILE, JSON.stringify(cfg, null, 2)); } catch { /* ignore */ }
 }
 
 function persistIslands() {
@@ -198,6 +206,18 @@ function handle(client, m) {
       if (s) { s.island = m.island || null; persistSessions(); broadcastSessions(); }
       break;
     }
+    case 'read-buffer': {
+      const s = sessions.get(m.id);
+      const all = s ? s.buffer.join('') : '';
+      const data = m.bytes ? all.slice(-Math.max(0, m.bytes)) : all;
+      safeSend(ws, JSON.stringify({ type: 'buffer', id: m.id, data, found: !!s }));
+      break;
+    }
+    case 'notify': {
+      const note = { type: 'notify', message: String(m.message || ''), level: m.level || 'info', sessionId: m.sessionId || null, at: iso() };
+      for (const c of clients) if (c.authed) safeSend(c.ws, JSON.stringify(note));
+      break;
+    }
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }
 }
@@ -227,8 +247,9 @@ const wss = new WebSocketServer({ server });
 
 server.listen(PORT, HOST, () => {
   writeClaudeHooks();
+  writeMcpConfig();
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(
-    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), claudeSettings: CLAUDE_HOOKS_FILE }, null, 2));
+    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), claudeSettings: CLAUDE_HOOKS_FILE, mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
 });

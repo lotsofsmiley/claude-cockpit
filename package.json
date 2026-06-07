@@ -9,13 +9,18 @@
   "scripts": {
     "daemon": "node daemon/index.js",
     "start": "electron .",
-    "test:survive": "node daemon/test-survive.js"
+    "test:survive": "node daemon/test-survive.js",
+    "test:state": "node daemon/test-state.js",
+    "test:islands": "node daemon/test-islands.js",
+    "test:operator": "node daemon/test-operator.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "node-pty": "^1.1.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "electron": "^42.3.3"

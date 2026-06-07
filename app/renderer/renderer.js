@@ -279,7 +279,7 @@ function connect() {
         sessions.set(m.id, m.meta);
         activeId = m.id; term.clear(); renderRail(); doFit();
         const run = t && (t.claude
-          ? `claude${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}\r\n`
+          ? `claude${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}\r\n`
           : t.run);
         if (run) setTimeout(() => send({ type: 'input', id: m.id, data: run }), 700);
         break;
@@ -287,6 +287,7 @@ function connect() {
       case 'attached': if (m.id === activeId) term.write(m.buffer || ''); break;
       case 'data':     if (m.id === activeId) term.write(m.data); break;
       case 'exit':     if (m.id === activeId) term.writeln(`\r\n\x1b[31m[session exited: ${m.exitCode}]\x1b[0m`); break;
+      case 'notify':   try { new Notification('coclaude-pit · Claude', { body: m.message }); } catch (_) { /* ignore */ } break;
     }
   };
 }
