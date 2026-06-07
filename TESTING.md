@@ -63,3 +63,10 @@ Claude running *inside that tab* can operate the app. Open a **Claude · vault**
   - [ ] Retest: select text + `Ctrl+Shift+C`, `Ctrl+V` into a session, `Ctrl +/-` to resize the font, wheel-scroll in a **pwsh** tab.
   - Note: inside a running **Claude** TUI, selection/scroll/zoom are owned by Claude (it enables mouse mode), not local — test local selection/scroll in a plain **pwsh** tab.
   - CapsLock typing: should be moot now (focus + proper setup). If it still drops keys, F12 → Console while reproducing and report.
+- **Round 2 fixes (2026-06-07):**
+  - **Flashing console windows** were the state hooks POSTing tab status (not agents/tasks). Now hidden (`-WindowStyle Hidden`).
+  - **False "waiting on you":** `Notification` is now only treated as *waiting* when the session is mid-turn; finishing a turn no longer flips done→waiting or pings you.
+  - **Notifications off by default** and **silent** when enabled — toggle with the 🔔 / 🔕 button in the rail header.
+  - **Zoom** no longer garbles glyphs (WebGL glyph atlas is rebuilt on font change).
+  - **Scrollback** raised to 50,000 lines; daemon replay buffer to ~2 MB.
+  - **MCP:** added `cockpit_delete_island`; `cockpit_create_island` reuses a same-named island instead of creating a duplicate.

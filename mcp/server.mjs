@@ -85,9 +85,21 @@ server.registerTool('cockpit_close_session',
   guard(async ({ id }) => { await daemon.send({ type: 'kill', id }); return ok('closed'); }));
 
 server.registerTool('cockpit_create_island',
-  { title: 'Create island', description: 'Create a tab island (group). Optional name + color.',
+  { title: 'Create or reuse island', description: 'Create a tab island (group), or reuse an existing one with the same name (case-insensitive) to avoid duplicates. Optional color.',
     inputSchema: { name: z.string().optional(), color: z.string().optional() } },
-  guard(async (a) => { const m = await daemon.request({ type: 'island-create', ...a }, (x) => x.type === 'island-created'); return ok({ id: m.id }); }));
+  guard(async (a) => {
+    if (a.name) {
+      const cur = await daemon.request({ type: 'list' }, (x) => x.type === 'sessions');
+      const found = (cur.islands || []).find((i) => (i.name || '').toLowerCase() === a.name.toLowerCase());
+      if (found) return ok({ id: found.id, reused: true });
+    }
+    const m = await daemon.request({ type: 'island-create', ...a }, (x) => x.type === 'island-created');
+    return ok({ id: m.id });
+  }));
+
+server.registerTool('cockpit_delete_island',
+  { title: 'Delete island', description: 'Delete an island; its tabs fall back to ungrouped (they are NOT closed).', inputSchema: { id: z.string() } },
+  guard(async ({ id }) => { await daemon.send({ type: 'island-delete', id }); return ok('deleted'); }));
 
 server.registerTool('cockpit_set_island',
   { title: 'Update island', description: 'Rename / recolor / collapse an island.',

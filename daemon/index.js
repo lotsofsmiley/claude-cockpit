@@ -35,7 +35,7 @@ const STATE_BY_EVENT = {
   Notification: 'waiting', Stop: 'done', SessionEnd: 'idle',
 };
 const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd'];
-const MAX_BUFFER_BYTES = 256 * 1024;
+const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // ~2 MB of scrollback replayed on re-attach
 const DEFAULT_SHELL = process.env.COCLAUDE_SHELL || 'powershell.exe';
 const DEFAULT_SHELL_ARGS = process.env.COCLAUDE_SHELL_ARGS
   ? JSON.parse(process.env.COCLAUDE_SHELL_ARGS)
@@ -87,7 +87,8 @@ const HOOK_SCRIPT = [
 ].join('\r\n');
 function hookCmd(event) {
   const p = HOOK_SCRIPT_FILE.replace(/\\/g, '/');
-  return `powershell -NoProfile -ExecutionPolicy Bypass -File "${p}" -Event ${event}`;
+  // -WindowStyle Hidden stops a console window flashing on every hook fire.
+  return `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${p}" -Event ${event}`;
 }
 function writeClaudeHooks() {
   try { fs.writeFileSync(HOOK_SCRIPT_FILE, HOOK_SCRIPT); } catch { /* ignore */ }
@@ -248,8 +249,12 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       const s = tab && sessions.get(tab);
       if (s) {
-        const st = STATE_BY_EVENT[event];
-        if (st) { s.state = st; s.stateAt = iso(); broadcastSessions(); }
+        let st = STATE_BY_EVENT[event];
+        // Notification fires both for "needs permission" (mid-turn) AND idle-after-done.
+        // Only treat it as 'waiting' when the session is actually mid-turn, else every
+        // finished turn would flip done -> waiting and falsely ping "waiting on you".
+        if (event === 'Notification' && s.state !== 'running') st = null;
+        if (st && st !== s.state) { s.state = st; s.stateAt = iso(); broadcastSessions(); }
       }
       res.writeHead(200); res.end('ok');
     });

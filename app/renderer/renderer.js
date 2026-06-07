@@ -20,13 +20,14 @@ const tabMenu = document.getElementById('tabMenu');
 
 const term = new Terminal({
   fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize: 13,
-  cursorBlink: true, scrollback: 5000, rightClickSelectsWord: true,
+  cursorBlink: true, scrollback: 50000, rightClickSelectsWord: true,
   theme: { background: '#0b0d10', foreground: '#cdd6e4' },
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
-try { if (window.WebglAddon) term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) { /* GPU renderer unavailable; DOM fallback */ }
+let webgl = null;
+try { if (window.WebglAddon) { webgl = new WebglAddon.WebglAddon(); term.loadAddon(webgl); } } catch (_) { webgl = null; }
 fit.fit();
 // Keep keystrokes landing in the active session: clicking the terminal area or
 // re-focusing the window always returns focus to xterm's input.
@@ -36,7 +37,12 @@ window.addEventListener('focus', () => term.focus());
 // No menu bar, so wire clipboard + font-zoom here. Non-Ctrl keys pass straight
 // through to the shell (typing is never intercepted).
 const clip = window.cockpit || {};
-function setFont(px) { term.options.fontSize = Math.max(8, Math.min(30, px)); doFit(); }
+function setFont(px) {
+  term.options.fontSize = Math.max(8, Math.min(30, px));
+  if (webgl) { try { webgl.clearTextureAtlas(); } catch (_) { /* ignore */ } } // rebuild glyphs at the new size
+  doFit();
+  try { term.refresh(0, term.rows - 1); } catch (_) { /* ignore */ }
+}
 term.attachCustomKeyEventHandler((e) => {
   if (e.type !== 'keydown' || !e.ctrlKey) return true;
   const k = e.key.toLowerCase();
@@ -54,6 +60,7 @@ let activeId = null;
 let bootstrapped = false;
 let daemonLabel = '';
 let islandList = [];                 // [{id,name,color,collapsed,order}]
+let notifyOn = localStorage.getItem('coclaude.notify') === '1'; // desktop notifications: off by default
 let renameIslandId = null;           // island to inline-rename on next render (just created)
 const sessions = new Map();
 const prevState = new Map();
@@ -72,7 +79,8 @@ function stateColor(s) {
   }
 }
 function notifyWaiting(s) {
-  try { new Notification('coclaude-pit', { body: `${s.name || 'session'} is waiting on you` }); } catch (_) { /* ignore */ }
+  if (!notifyOn) return;
+  try { new Notification('coclaude-pit', { body: `${s.name || 'session'} is waiting on you`, silent: true }); } catch (_) { /* ignore */ }
 }
 function setStatus() {
   statusEl.textContent = sessions.size ? daemonLabel : (daemonLabel ? daemonLabel + ' · click + to start' : 'connecting…');
@@ -261,6 +269,13 @@ setLayout(localStorage.getItem('coclaude.layout') || 'left');
 document.getElementById('btnLayout').onclick = () => setLayout(appEl.classList.contains('layout-left') ? 'top' : 'left');
 document.getElementById('btnIsland').onclick = () => createIsland();
 document.getElementById('btnNew').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); openNewMenu(r.left, r.bottom + 4); };
+function setNotify(on) {
+  notifyOn = on; localStorage.setItem('coclaude.notify', on ? '1' : '0');
+  const b = document.getElementById('btnNotify');
+  if (b) { b.textContent = on ? '🔔' : '🔕'; b.title = on ? 'Notifications on' : 'Notifications off (click to enable)'; }
+}
+document.getElementById('btnNotify').onclick = () => setNotify(!notifyOn);
+setNotify(notifyOn);
 
 /* ---- connection ---- */
 function connect() {
@@ -310,7 +325,7 @@ function connect() {
       case 'attached': if (m.id === activeId) term.write(m.buffer || ''); break;
       case 'data':     if (m.id === activeId) term.write(m.data); break;
       case 'exit':     if (m.id === activeId) term.writeln(`\r\n\x1b[31m[session exited: ${m.exitCode}]\x1b[0m`); break;
-      case 'notify':   try { new Notification('coclaude-pit · Claude', { body: m.message }); } catch (_) { /* ignore */ } break;
+      case 'notify':   if (notifyOn) { try { new Notification('coclaude-pit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } break;
     }
   };
 }
