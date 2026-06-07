@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>coclaude-pit</title>
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; color: #cdd6e4;
+      font-family: "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+    #app { display: flex; height: 100vh; }
+    #rail { width: 200px; background: #0e1116; border-right: 1px solid #1c2230;
+      padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; }
+    #rail h1 { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; margin: 4px 6px 8px; text-transform: lowercase; }
+    .tab { padding: 6px 8px; border-radius: 6px; background: #141a24; font-size: 13px;
+      cursor: pointer; display: flex; align-items: center; gap: 7px; }
+    .tab.active { background: rgba(31,111,235,.20); outline: 1px solid rgba(31,111,235,.4); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
+    #main { flex: 1; position: relative; }
+    #term { position: absolute; inset: 0; padding: 6px; }
+    #status { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: #5c6675; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="rail"><h1>coclaude-pit</h1><div id="tabs"></div></div>
+    <div id="main"><div id="term"></div><div id="status">connecting…</div></div>
+  </div>
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

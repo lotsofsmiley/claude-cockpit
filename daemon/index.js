@@ -1,0 +1,174 @@
+'use strict';
+/*
+ * coclaude-pit daemon
+ * -------------------
+ * Owns every PTY and OUTLIVES the GUI. Plain Node process (node-pty is built for
+ * system Node, so the Electron GUI needs zero native modules and never rebuilds).
+ * The GUI and the MCP server are just WebSocket clients that attach/detach.
+ *
+ * Survival model: closing/crashing the GUI only drops a WS client. The shell
+ * processes keep running here. Reopen the GUI -> reconnect -> re-attach -> the
+ * ring buffer replays recent output and you're back in the live session.
+ */
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { WebSocketServer } = require('ws');
+const pty = require('node-pty');
+
+const VERSION = '0.0.1';
+const HOST = '127.0.0.1';
+const PORT = Number(process.env.COCLAUDE_PORT) || 4317;
+const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
+const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
+const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
+const MAX_BUFFER_BYTES = 256 * 1024;
+const DEFAULT_SHELL = process.env.COCLAUDE_SHELL || 'powershell.exe';
+const DEFAULT_SHELL_ARGS = process.env.COCLAUDE_SHELL_ARGS
+  ? JSON.parse(process.env.COCLAUDE_SHELL_ARGS)
+  : ['-NoLogo'];
+
+fs.mkdirSync(STATE_DIR, { recursive: true });
+const TOKEN = process.env.COCLAUDE_TOKEN || crypto.randomBytes(24).toString('hex');
+
+/** @type {Map<string, any>} */
+const sessions = new Map();
+/** connected clients: { ws, attached:Set<id>, authed:boolean } */
+const clients = new Set();
+
+const iso = () => new Date().toISOString();
+const meta = (s) => ({
+  id: s.id, name: s.name, color: s.color, cwd: s.cwd, shell: s.shell,
+  cols: s.cols, rows: s.rows, createdAt: s.createdAt,
+  alive: !!s.pty, lastExit: s.lastExit ?? null,
+});
+
+function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data); } catch { /* ignore */ } }
+
+function persistSessions() {
+  try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...sessions.values()].map(meta), null, 2)); } catch { /* ignore */ }
+}
+
+function broadcastSessions() {
+  const msg = JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) });
+  for (const c of clients) if (c.authed) safeSend(c.ws, msg);
+}
+
+function appendBuffer(s, data) {
+  s.buffer.push(data);
+  s.bufferBytes += Buffer.byteLength(data);
+  while (s.bufferBytes > MAX_BUFFER_BYTES && s.buffer.length > 1) {
+    s.bufferBytes -= Buffer.byteLength(s.buffer.shift());
+  }
+}
+
+function spawnSession(opts = {}) {
+  const id = crypto.randomUUID();
+  const cwd = opts.cwd && fs.existsSync(opts.cwd) ? opts.cwd : os.homedir();
+  const shell = opts.shell || DEFAULT_SHELL;
+  const args = opts.args || DEFAULT_SHELL_ARGS;
+  const cols = opts.cols || 80, rows = opts.rows || 24;
+  const p = pty.spawn(shell, args, { name: 'xterm-256color', cols, rows, cwd, env: process.env });
+  const s = {
+    id, name: opts.name || 'session', color: opts.color || null,
+    cwd, shell, cols, rows, createdAt: iso(),
+    pty: p, buffer: [], bufferBytes: 0, lastExit: null,
+  };
+  sessions.set(id, s);
+  p.onData((data) => {
+    appendBuffer(s, data);
+    const msg = JSON.stringify({ type: 'data', id, data });
+    for (const c of clients) if (c.attached.has(id)) safeSend(c.ws, msg);
+  });
+  p.onExit(({ exitCode }) => {
+    s.lastExit = exitCode; s.pty = null;
+    const msg = JSON.stringify({ type: 'exit', id, exitCode });
+    for (const c of clients) if (c.attached.has(id)) safeSend(c.ws, msg);
+    broadcastSessions(); persistSessions();
+  });
+  persistSessions();
+  return s;
+}
+
+function handle(client, m) {
+  const ws = client.ws;
+  switch (m.type) {
+    case 'list':
+      safeSend(ws, JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) }));
+      break;
+    case 'spawn': {
+      const s = spawnSession(m);
+      client.attached.add(s.id);
+      safeSend(ws, JSON.stringify({ type: 'spawned', id: s.id, meta: meta(s) }));
+      broadcastSessions();
+      break;
+    }
+    case 'attach': {
+      const s = sessions.get(m.id);
+      if (!s) { safeSend(ws, JSON.stringify({ type: 'error', message: 'no such session' })); break; }
+      client.attached.add(m.id);
+      safeSend(ws, JSON.stringify({ type: 'attached', id: m.id, buffer: s.buffer.join(''), meta: meta(s) }));
+      break;
+    }
+    case 'detach': client.attached.delete(m.id); break;
+    case 'input': { const s = sessions.get(m.id); if (s && s.pty) s.pty.write(m.data); break; }
+    case 'resize': {
+      const s = sessions.get(m.id);
+      if (s && s.pty) { try { s.pty.resize(m.cols, m.rows); s.cols = m.cols; s.rows = m.rows; } catch { /* ignore */ } }
+      break;
+    }
+    case 'rename': {
+      const s = sessions.get(m.id);
+      if (s) { if (m.name != null) s.name = m.name; if (m.color !== undefined) s.color = m.color; broadcastSessions(); persistSessions(); }
+      break;
+    }
+    case 'kill': {
+      const s = sessions.get(m.id);
+      if (s) { if (s.pty) { try { s.pty.kill(); } catch { /* ignore */ } } sessions.delete(m.id); broadcastSessions(); persistSessions(); }
+      break;
+    }
+    default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
+  }
+}
+
+const wss = new WebSocketServer({ host: HOST, port: PORT }, () => {
+  fs.writeFileSync(DAEMON_FILE, JSON.stringify(
+    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso() }, null, 2));
+  console.log(`[coclaude-pit] daemon v${VERSION} listening on ws://${HOST}:${PORT} (pid ${process.pid})`);
+  console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
+});
+
+wss.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`[coclaude-pit] port ${PORT} already in use — another daemon is running. Exiting.`);
+    process.exit(0);
+  }
+  console.error('[coclaude-pit] server error', err);
+  process.exit(1);
+});
+
+wss.on('connection', (ws) => {
+  const client = { ws, attached: new Set(), authed: false };
+  clients.add(client);
+  ws.on('message', (raw) => {
+    let m; try { m = JSON.parse(raw.toString()); } catch { return; }
+    if (!client.authed) {
+      if (m.type === 'hello' && m.token === TOKEN) {
+        client.authed = true;
+        safeSend(ws, JSON.stringify({ type: 'hello-ok', daemon: { pid: process.pid, version: VERSION } }));
+        safeSend(ws, JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) }));
+      } else {
+        safeSend(ws, JSON.stringify({ type: 'error', message: 'auth required' }));
+        ws.close();
+      }
+      return;
+    }
+    handle(client, m);
+  });
+  ws.on('close', () => { clients.delete(client); });
+  ws.on('error', () => {});
+});
+
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
