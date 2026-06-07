@@ -37,6 +37,8 @@
       cursor: pointer; display: flex; align-items: center; gap: 7px; max-width: 200px; }
     .tab.active { background: rgba(31,111,235,.20); outline: 1px solid rgba(31,111,235,.4); }
     .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
+    @keyframes cocPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+    .tab .dot.pulse { animation: cocPulse 1.1s ease-in-out infinite; }
     .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab .x { margin-left: auto; opacity: 0; width: 16px; height: 16px; line-height: 14px;
       text-align: center; border-radius: 4px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }

@@ -6,7 +6,7 @@ const VAULT = 'C:\\add\\vaults\\ADD-Vault';
 const TEMPLATES = [
   { label: 'PowerShell · home',  name: 'pwsh',         shell: 'powershell.exe', args: ['-NoLogo'], cwd: null,            color: null },
   { label: 'PowerShell · vault', name: 'vault',        shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,           color: '#7aa2f7' },
-  { label: 'Claude · vault',     name: 'claude:vault', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,           color: '#e3b341', run: 'claude\r\n' },
+  { label: 'Claude · vault',     name: 'claude:vault', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,           color: '#e3b341', claude: true },
   { label: 'PowerShell · dev',   name: 'dev',          shell: 'powershell.exe', args: ['-NoLogo'], cwd: 'C:\\add\\dev',  color: null },
 ];
 const COLORS = ['#3fb950', '#7aa2f7', '#e3b341', '#f85149', '#bc8cff', '#39c5cf', '#ff9e64'];
@@ -37,6 +37,20 @@ const pendingSpawns = []; // FIFO of templates awaiting their 'spawned' reply
 const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const firstId = () => (sessions.size ? [...sessions.keys()][0] : null);
 
+const prevState = new Map();
+function stateColor(s) {
+  switch (s.state) {
+    case 'running': return '#7aa2f7'; // working
+    case 'waiting': return '#e3b341'; // needs you
+    case 'done':    return '#3fb950'; // finished, your turn
+    case 'idle':    return '#5c6675'; // ended
+    default:        return s.color || (s.alive ? '#3fb950' : '#f85149');
+  }
+}
+function notifyWaiting(s) {
+  try { new Notification('coclaude-pit', { body: `${s.name || 'session'} is waiting on you` }); } catch (_) { /* ignore */ }
+}
+
 function setStatus() {
   statusEl.textContent = sessions.size ? daemonLabel : (daemonLabel ? daemonLabel + ' · no sessions — click +' : 'connecting…');
 }
@@ -50,8 +64,9 @@ function renderTabs() {
     el.dataset.id = s.id;
 
     const dot = document.createElement('span');
-    dot.className = 'dot';
-    dot.style.background = s.color || (s.alive ? '#3fb950' : '#f85149');
+    dot.className = 'dot' + (s.state === 'running' || s.state === 'waiting' ? ' pulse' : '');
+    dot.style.background = stateColor(s);
+    dot.title = s.state ? `claude: ${s.state}` : (s.alive ? 'running' : 'exited');
 
     const name = document.createElement('span');
     name.className = 'name';
@@ -194,6 +209,11 @@ function connect() {
       case 'sessions':
         sessions.clear();
         m.sessions.forEach((s) => sessions.set(s.id, s));
+        for (const s of sessions.values()) {
+          if (s.state === 'waiting' && prevState.get(s.id) !== 'waiting') notifyWaiting(s);
+          prevState.set(s.id, s.state);
+        }
+        for (const id of [...prevState.keys()]) if (!sessions.has(id)) prevState.delete(id);
         if (!bootstrapped) {
           bootstrapped = true;
           if (sessions.size === 0) spawnTemplate(TEMPLATES[0]);
@@ -208,7 +228,10 @@ function connect() {
         const t = pendingSpawns.shift();
         sessions.set(m.id, m.meta);
         activeId = m.id; term.clear(); renderTabs(); doFit();
-        if (t && t.run) setTimeout(() => send({ type: 'input', id: m.id, data: t.run }), 700);
+        const run = t && (t.claude
+          ? `claude${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}\r\n`
+          : t.run);
+        if (run) setTimeout(() => send({ type: 'input', id: m.id, data: run }), 700);
         break;
       }
       case 'attached':

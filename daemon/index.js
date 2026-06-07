@@ -14,6 +14,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const http = require('http');
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
@@ -23,6 +24,13 @@ const PORT = Number(process.env.COCLAUDE_PORT) || 4317;
 const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
 const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
+const CLAUDE_HOOKS_FILE = path.join(STATE_DIR, 'claude-hooks.json');
+const STATE_BY_EVENT = {
+  SessionStart: 'running', UserPromptSubmit: 'running',
+  PreToolUse: 'running', PostToolUse: 'running',
+  Notification: 'waiting', Stop: 'done', SessionEnd: 'idle',
+};
+const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd'];
 const MAX_BUFFER_BYTES = 256 * 1024;
 const DEFAULT_SHELL = process.env.COCLAUDE_SHELL || 'powershell.exe';
 const DEFAULT_SHELL_ARGS = process.env.COCLAUDE_SHELL_ARGS
@@ -42,12 +50,28 @@ const meta = (s) => ({
   id: s.id, name: s.name, color: s.color, cwd: s.cwd, shell: s.shell,
   cols: s.cols, rows: s.rows, createdAt: s.createdAt,
   alive: !!s.pty, lastExit: s.lastExit ?? null,
+  state: s.state ?? null, stateAt: s.stateAt ?? null,
 });
 
 function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data); } catch { /* ignore */ } }
 
 function persistSessions() {
   try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...sessions.values()].map(meta), null, 2)); } catch { /* ignore */ }
+}
+
+// A Claude hook command that reports state to this daemon. Guarded by ADD_TERM_TAB_ID
+// so it is a silent no-op when claude runs OUTSIDE a cockpit tab. URL+tab come from
+// env the daemon stamps on each pty; the event is baked per-hook.
+function hookCmd(event) {
+  return 'powershell -NoProfile -Command "$b=[Console]::In.ReadToEnd(); '
+    + 'if($env:ADD_TERM_TAB_ID){try{Invoke-RestMethod '
+    + "-Uri ($env:COCLAUDE_HOOK_URL+'?tab='+$env:ADD_TERM_TAB_ID+'&event=" + event + "') "
+    + '-Method Post -Body $b -ContentType \'application/json\' -TimeoutSec 2 | Out-Null}catch{}}"';
+}
+function writeClaudeHooks() {
+  const hooks = {};
+  for (const e of HOOK_EVENTS) hooks[e] = [{ hooks: [{ type: 'command', command: hookCmd(e) }] }];
+  try { fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify({ hooks }, null, 2)); } catch { /* ignore */ }
 }
 
 function broadcastSessions() {
@@ -69,11 +93,16 @@ function spawnSession(opts = {}) {
   const shell = opts.shell || DEFAULT_SHELL;
   const args = opts.args || DEFAULT_SHELL_ARGS;
   const cols = opts.cols || 80, rows = opts.rows || 24;
-  const p = pty.spawn(shell, args, { name: 'xterm-256color', cols, rows, cwd, env: process.env });
+  const env = Object.assign({}, process.env, {
+    ADD_TERM_TAB_ID: id,
+    COCLAUDE_HOOK_URL: `http://${HOST}:${PORT}/hook`,
+  });
+  const p = pty.spawn(shell, args, { name: 'xterm-256color', cols, rows, cwd, env });
   const s = {
     id, name: opts.name || 'session', color: opts.color || null,
     cwd, shell, cols, rows, createdAt: iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
+    state: null, stateAt: null,
   };
   sessions.set(id, s);
   p.onData((data) => {
@@ -132,14 +161,38 @@ function handle(client, m) {
   }
 }
 
-const wss = new WebSocketServer({ host: HOST, port: PORT }, () => {
+// HTTP server: serves the Claude-hook webhook; the WebSocket server shares the port.
+const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url && req.url.startsWith('/hook')) {
+    const u = new URL(req.url, `http://${HOST}`);
+    const tab = u.searchParams.get('tab');
+    const event = u.searchParams.get('event');
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+    req.on('end', () => {
+      const s = tab && sessions.get(tab);
+      if (s) {
+        const st = STATE_BY_EVENT[event];
+        if (st) { s.state = st; s.stateAt = iso(); broadcastSessions(); }
+      }
+      res.writeHead(200); res.end('ok');
+    });
+    return;
+  }
+  res.writeHead(404); res.end();
+});
+
+const wss = new WebSocketServer({ server });
+
+server.listen(PORT, HOST, () => {
+  writeClaudeHooks();
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(
-    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso() }, null, 2));
-  console.log(`[coclaude-pit] daemon v${VERSION} listening on ws://${HOST}:${PORT} (pid ${process.pid})`);
+    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), claudeSettings: CLAUDE_HOOKS_FILE }, null, 2));
+  console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
 });
 
-wss.on('error', (err) => {
+server.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {
     console.error(`[coclaude-pit] port ${PORT} already in use — another daemon is running. Exiting.`);
     process.exit(0);
