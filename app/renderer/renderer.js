@@ -26,6 +26,10 @@ const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
 fit.fit();
+// Keep keystrokes landing in the active session: clicking the terminal area or
+// re-focusing the window always returns focus to xterm's input.
+document.getElementById('main').addEventListener('mousedown', () => setTimeout(() => term.focus(), 0));
+window.addEventListener('focus', () => term.focus());
 
 let ws = null;
 let activeId = null;
@@ -135,6 +139,7 @@ function attach(id) {
   activeId = id; term.clear();
   send({ type: 'attach', id });
   renderRail();
+  term.focus(); // a tab click must leave you ready to type immediately
 }
 function inlineRename(hostEl, oldEl, current, onSave) {
   const input = document.createElement('input');
@@ -277,7 +282,7 @@ function connect() {
       case 'spawned': {
         const t = pendingSpawns.shift();
         sessions.set(m.id, m.meta);
-        activeId = m.id; term.clear(); renderRail(); doFit();
+        activeId = m.id; term.clear(); renderRail(); doFit(); term.focus();
         const run = t && (t.claude
           ? `claude${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}\r\n`
           : t.run);

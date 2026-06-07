@@ -50,3 +50,11 @@ Claude running *inside that tab* can operate the app. Open a **Claude · vault**
 - [ ] "**close** the scratch session" → that tab disappears.
 - ⚠️ Security: these tools run in a live shell on localhost (token-gated). `cockpit_send_text` can execute commands — intended, but be aware.
 - ⚠️ Only Claude sessions started from the **Claude · vault** template have these tools (it injects `--mcp-config`). A manual `claude` won't.
+
+---
+
+## Known issues
+- **Input focus — fix attempted 2026-06-07.** Symptom: typing silently failed sometimes (reported worse with CapsLock; likely coincidental). Cause: clicking a tab / the rail moved focus off xterm's input box, so keystrokes went nowhere — and an empty prompt + `←` then opened Claude's agent view. Fix: the terminal now refocuses on tab-switch, spawn, window focus, and clicks in the terminal area.
+  - [ ] Retest: click a tab, immediately type → text lands. Click the rail, click back in the terminal, type → lands. Type a while in a Claude session without it dropping keys.
+  - If keys STILL drop (especially tied to CapsLock), open **F12 → Console**, reproduce, and report anything logged — next step is instrumenting key events.
+- `←` opening the agent view is **native Claude Code** (not the cockpit) — can't be intercepted from here; the focus fix prevents the empty-prompt trigger.
