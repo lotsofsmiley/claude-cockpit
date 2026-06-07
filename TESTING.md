@@ -58,3 +58,8 @@ Claude running *inside that tab* can operate the app. Open a **Claude · vault**
   - [ ] Retest: click a tab, immediately type → text lands. Click the rail, click back in the terminal, type → lands. Type a while in a Claude session without it dropping keys.
   - If keys STILL drop (especially tied to CapsLock), open **F12 → Console**, reproduce, and report anything logged — next step is instrumenting key events.
 - `←` opening the agent view is **native Claude Code** (not the cockpit) — can't be intercepted from here; the focus fix prevents the empty-prompt trigger.
+- **State hooks were erroring (fixed 2026-06-07).** The inline PowerShell hook had its `$variables` eaten by the POSIX shell Claude runs hooks through → a red `ParserError` every turn and state never posted. Now shipped as `~/.coclaude-pit/hook.ps1` invoked by `-File` (no `$` to mangle), env read inside the script. Verified → state icons should now light up for real Claude sessions, not just the synthetic test.
+- **Terminal UX added (2026-06-07):** copy = `Ctrl+Shift+C` (or `Ctrl+C` when there's a selection; bare `Ctrl+C` still interrupts), paste = `Ctrl+V`, font zoom = `Ctrl +` / `Ctrl -` / `Ctrl 0`, scrollback = 5000 lines, **WebGL GPU renderer** (the "slow" fix).
+  - [ ] Retest: select text + `Ctrl+Shift+C`, `Ctrl+V` into a session, `Ctrl +/-` to resize the font, wheel-scroll in a **pwsh** tab.
+  - Note: inside a running **Claude** TUI, selection/scroll/zoom are owned by Claude (it enables mouse mode), not local — test local selection/scroll in a plain **pwsh** tab.
+  - CapsLock typing: should be moot now (focus + proper setup). If it still drops keys, F12 → Console while reproducing and report.

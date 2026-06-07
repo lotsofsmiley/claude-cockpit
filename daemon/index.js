@@ -25,6 +25,7 @@ const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
 const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
 const CLAUDE_HOOKS_FILE = path.join(STATE_DIR, 'claude-hooks.json');
+const HOOK_SCRIPT_FILE = path.join(STATE_DIR, 'hook.ps1');
 const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
 const MCP_CONFIG_FILE = path.join(STATE_DIR, 'mcp.json');
 const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
@@ -69,13 +70,27 @@ function persistSessions() {
 // A Claude hook command that reports state to this daemon. Guarded by ADD_TERM_TAB_ID
 // so it is a silent no-op when claude runs OUTSIDE a cockpit tab. URL+tab come from
 // env the daemon stamps on each pty; the event is baked per-hook.
+// Claude runs hooks through a POSIX shell on Windows, which would eat PowerShell
+// $variables in an inline -Command. So the logic lives in a .ps1 file and the hook
+// just invokes it by -File (no $ for the shell to mangle). Forward slashes keep the
+// shell happy; env (ADD_TERM_TAB_ID / COCLAUDE_HOOK_URL) is read inside the script.
+const HOOK_SCRIPT = [
+  'param([string]$Event)',
+  'try {',
+  '  $body = [Console]::In.ReadToEnd()',
+  '  if ($env:ADD_TERM_TAB_ID -and $env:COCLAUDE_HOOK_URL) {',
+  '    $uri = "$($env:COCLAUDE_HOOK_URL)?tab=$($env:ADD_TERM_TAB_ID)&event=$Event"',
+  '    Invoke-RestMethod -Uri $uri -Method Post -Body $body -ContentType "application/json" -TimeoutSec 2 | Out-Null',
+  '  }',
+  '} catch { }',
+  '',
+].join('\r\n');
 function hookCmd(event) {
-  return 'powershell -NoProfile -Command "$b=[Console]::In.ReadToEnd(); '
-    + 'if($env:ADD_TERM_TAB_ID){try{Invoke-RestMethod '
-    + "-Uri ($env:COCLAUDE_HOOK_URL+'?tab='+$env:ADD_TERM_TAB_ID+'&event=" + event + "') "
-    + '-Method Post -Body $b -ContentType \'application/json\' -TimeoutSec 2 | Out-Null}catch{}}"';
+  const p = HOOK_SCRIPT_FILE.replace(/\\/g, '/');
+  return `powershell -NoProfile -ExecutionPolicy Bypass -File "${p}" -Event ${event}`;
 }
 function writeClaudeHooks() {
+  try { fs.writeFileSync(HOOK_SCRIPT_FILE, HOOK_SCRIPT); } catch { /* ignore */ }
   const hooks = {};
   for (const e of HOOK_EVENTS) hooks[e] = [{ hooks: [{ type: 'command', command: hookCmd(e) }] }];
   try { fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify({ hooks }, null, 2)); } catch { /* ignore */ }

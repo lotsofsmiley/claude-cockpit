@@ -20,16 +20,34 @@ const tabMenu = document.getElementById('tabMenu');
 
 const term = new Terminal({
   fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize: 13,
-  cursorBlink: true, theme: { background: '#0b0d10', foreground: '#cdd6e4' },
+  cursorBlink: true, scrollback: 5000, rightClickSelectsWord: true,
+  theme: { background: '#0b0d10', foreground: '#cdd6e4' },
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
+try { if (window.WebglAddon) term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) { /* GPU renderer unavailable; DOM fallback */ }
 fit.fit();
 // Keep keystrokes landing in the active session: clicking the terminal area or
 // re-focusing the window always returns focus to xterm's input.
 document.getElementById('main').addEventListener('mousedown', () => setTimeout(() => term.focus(), 0));
 window.addEventListener('focus', () => term.focus());
+
+// No menu bar, so wire clipboard + font-zoom here. Non-Ctrl keys pass straight
+// through to the shell (typing is never intercepted).
+const clip = window.cockpit || {};
+function setFont(px) { term.options.fontSize = Math.max(8, Math.min(30, px)); doFit(); }
+term.attachCustomKeyEventHandler((e) => {
+  if (e.type !== 'keydown' || !e.ctrlKey) return true;
+  const k = e.key.toLowerCase();
+  if (e.shiftKey && k === 'c') { const s = term.getSelection(); if (s && clip.clipboardWrite) clip.clipboardWrite(s); e.preventDefault(); return false; }
+  if (!e.shiftKey && k === 'c' && term.hasSelection()) { if (clip.clipboardWrite) clip.clipboardWrite(term.getSelection()); e.preventDefault(); return false; }
+  if (k === 'v') { const t = clip.clipboardRead && clip.clipboardRead(); if (activeId && t) send({ type: 'input', id: activeId, data: t }); e.preventDefault(); return false; }
+  if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
+  if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
+  if (k === '0') { setFont(13); e.preventDefault(); return false; }
+  return true;
+});
 
 let ws = null;
 let activeId = null;

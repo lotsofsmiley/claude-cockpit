@@ -1,7 +1,7 @@
 'use strict';
 /* Reads the daemon's port+token from the state file and hands them to the
  * renderer through a locked-down bridge. The renderer never touches Node. */
-const { contextBridge } = require('electron');
+const { contextBridge, clipboard } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -12,4 +12,8 @@ function readDaemon() {
   } catch { return null; }
 }
 
-contextBridge.exposeInMainWorld('cockpit', { daemon: readDaemon() });
+contextBridge.exposeInMainWorld('cockpit', {
+  daemon: readDaemon(),
+  clipboardRead: () => clipboard.readText(),
+  clipboardWrite: (t) => clipboard.writeText(t),
+});
