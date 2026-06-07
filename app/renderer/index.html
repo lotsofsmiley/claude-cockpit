@@ -5,26 +5,81 @@
   <title>coclaude-pit</title>
   <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
   <style>
-    html, body { margin: 0; height: 100%; background: #0b0d10; color: #cdd6e4;
+    :root { --bg:#0b0d10; --rail:#0e1116; --line:#1c2230; --tab:#141a24; --txt:#cdd6e4;
+      --accent:#1f6feb; --muted:#5c6675; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--txt);
       font-family: "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+
     #app { display: flex; height: 100vh; }
-    #rail { width: 200px; background: #0e1116; border-right: 1px solid #1c2230;
-      padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; }
-    #rail h1 { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; margin: 4px 6px 8px; text-transform: lowercase; }
-    .tab { padding: 6px 8px; border-radius: 6px; background: #141a24; font-size: 13px;
-      cursor: pointer; display: flex; align-items: center; gap: 7px; }
+    #app.layout-left { flex-direction: row; }
+    #app.layout-top  { flex-direction: column; }
+
+    #rail { background: var(--rail); display: flex; gap: 8px; }
+    .layout-left #rail { width: 212px; flex-direction: column; padding: 8px;
+      border-right: 1px solid var(--line); }
+    .layout-top #rail { width: 100%; flex-direction: row; align-items: center;
+      padding: 6px 8px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+
+    #railhead { display: flex; align-items: center; gap: 6px; }
+    .layout-left #railhead { justify-content: space-between; }
+    #brand { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; }
+    #railhead .btns { display: flex; gap: 4px; }
+    #railhead button { background: var(--tab); color: var(--txt); border: 1px solid #232b3a;
+      border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; }
+    #railhead button:hover { background: #1b2230; }
+
+    #tabs { display: flex; gap: 6px; min-width: 0; }
+    .layout-left #tabs { flex-direction: column; }
+    .layout-top  #tabs { flex-direction: row; }
+
+    .tab { padding: 6px 8px; border-radius: 6px; background: var(--tab); font-size: 13px;
+      cursor: pointer; display: flex; align-items: center; gap: 7px; max-width: 200px; }
     .tab.active { background: rgba(31,111,235,.20); outline: 1px solid rgba(31,111,235,.4); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
-    #main { flex: 1; position: relative; }
+    .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
+    .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab .x { margin-left: auto; opacity: 0; width: 16px; height: 16px; line-height: 14px;
+      text-align: center; border-radius: 4px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+    .tab:hover .x { opacity: .7; }
+    .tab .x:hover { opacity: 1; background: rgba(248,81,73,.25); color: #fff; }
+    .tab input.rename { background: var(--bg); border: 1px solid var(--accent); color: #fff;
+      font: inherit; border-radius: 4px; padding: 1px 4px; width: 120px; }
+
+    #main { flex: 1; position: relative; min-height: 0; min-width: 0; }
     #term { position: absolute; inset: 0; padding: 6px; }
-    #status { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: #5c6675; pointer-events: none; }
+    #status { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--muted);
+      pointer-events: none; }
+
+    .menu { position: absolute; z-index: 50; background: #11151c; border: 1px solid #232b3a;
+      border-radius: 8px; padding: 4px; min-width: 168px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+    .menu .item { padding: 7px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; }
+    .menu .item:hover { background: #1b2230; }
+    .menu .sep { height: 1px; background: #232b3a; margin: 4px 2px; }
+    .menu .label { padding: 4px 10px 2px; font-size: 11px; color: var(--muted); }
+    .swatches { display: flex; gap: 6px; padding: 6px 10px; flex-wrap: wrap; }
+    .swatch { width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 1px solid #0006; }
+    .swatch.none { background: repeating-linear-gradient(45deg,#222,#222 3px,#444 3px,#444 6px); }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="rail"><h1>coclaude-pit</h1><div id="tabs"></div></div>
+  <div id="app" class="layout-left">
+    <div id="rail">
+      <div id="railhead">
+        <span id="brand">coclaude-pit</span>
+        <div class="btns">
+          <button id="btnLayout" title="Toggle left / top layout">▦</button>
+          <button id="btnNew" title="New session">+</button>
+        </div>
+      </div>
+      <div id="tabs"></div>
+    </div>
     <div id="main"><div id="term"></div><div id="status">connecting…</div></div>
   </div>
+
+  <div id="newMenu" class="menu hidden"></div>
+  <div id="tabMenu" class="menu hidden"></div>
+
   <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script src="renderer.js"></script>
