@@ -25,6 +25,7 @@ const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
 const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
 const CLAUDE_HOOKS_FILE = path.join(STATE_DIR, 'claude-hooks.json');
+const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
 const STATE_BY_EVENT = {
   SessionStart: 'running', UserPromptSubmit: 'running',
   PreToolUse: 'running', PostToolUse: 'running',
@@ -42,6 +43,9 @@ const TOKEN = process.env.COCLAUDE_TOKEN || crypto.randomBytes(24).toString('hex
 
 /** @type {Map<string, any>} */
 const sessions = new Map();
+/** @type {Map<string, any>} island registry: id -> {id,name,color,collapsed,order} */
+const islands = new Map();
+try { JSON.parse(fs.readFileSync(ISLANDS_FILE, 'utf8')).forEach((i) => islands.set(i.id, i)); } catch { /* none yet */ }
 /** connected clients: { ws, attached:Set<id>, authed:boolean } */
 const clients = new Set();
 
@@ -51,6 +55,7 @@ const meta = (s) => ({
   cols: s.cols, rows: s.rows, createdAt: s.createdAt,
   alive: !!s.pty, lastExit: s.lastExit ?? null,
   state: s.state ?? null, stateAt: s.stateAt ?? null,
+  island: s.island ?? null,
 });
 
 function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data); } catch { /* ignore */ } }
@@ -74,8 +79,14 @@ function writeClaudeHooks() {
   try { fs.writeFileSync(CLAUDE_HOOKS_FILE, JSON.stringify({ hooks }, null, 2)); } catch { /* ignore */ }
 }
 
+function persistIslands() {
+  try { fs.writeFileSync(ISLANDS_FILE, JSON.stringify([...islands.values()], null, 2)); } catch { /* ignore */ }
+}
+function stateMsg() {
+  return JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta), islands: [...islands.values()] });
+}
 function broadcastSessions() {
-  const msg = JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) });
+  const msg = stateMsg();
   for (const c of clients) if (c.authed) safeSend(c.ws, msg);
 }
 
@@ -102,7 +113,7 @@ function spawnSession(opts = {}) {
     id, name: opts.name || 'session', color: opts.color || null,
     cwd, shell, cols, rows, createdAt: iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
-    state: null, stateAt: null,
+    state: null, stateAt: null, island: opts.island || null,
   };
   sessions.set(id, s);
   p.onData((data) => {
@@ -124,7 +135,7 @@ function handle(client, m) {
   const ws = client.ws;
   switch (m.type) {
     case 'list':
-      safeSend(ws, JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) }));
+      safeSend(ws, stateMsg());
       break;
     case 'spawn': {
       const s = spawnSession(m);
@@ -155,6 +166,36 @@ function handle(client, m) {
     case 'kill': {
       const s = sessions.get(m.id);
       if (s) { if (s.pty) { try { s.pty.kill(); } catch { /* ignore */ } } sessions.delete(m.id); broadcastSessions(); persistSessions(); }
+      break;
+    }
+    case 'island-create': {
+      const id = crypto.randomUUID();
+      islands.set(id, { id, name: m.name || 'island', color: m.color || null, collapsed: false, order: islands.size });
+      if (m.moveId) { const s = sessions.get(m.moveId); if (s) s.island = id; }
+      persistIslands(); persistSessions(); broadcastSessions();
+      safeSend(ws, JSON.stringify({ type: 'island-created', id }));
+      break;
+    }
+    case 'island-update': {
+      const i = islands.get(m.id);
+      if (i) {
+        if (m.name != null) i.name = m.name;
+        if (m.color !== undefined) i.color = m.color;
+        if (m.collapsed !== undefined) i.collapsed = !!m.collapsed;
+        persistIslands(); broadcastSessions();
+      }
+      break;
+    }
+    case 'island-delete': {
+      if (islands.delete(m.id)) {
+        for (const s of sessions.values()) if (s.island === m.id) s.island = null;
+        persistIslands(); persistSessions(); broadcastSessions();
+      }
+      break;
+    }
+    case 'session-move': {
+      const s = sessions.get(m.id);
+      if (s) { s.island = m.island || null; persistSessions(); broadcastSessions(); }
       break;
     }
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
@@ -210,7 +251,7 @@ wss.on('connection', (ws) => {
       if (m.type === 'hello' && m.token === TOKEN) {
         client.authed = true;
         safeSend(ws, JSON.stringify({ type: 'hello-ok', daemon: { pid: process.pid, version: VERSION } }));
-        safeSend(ws, JSON.stringify({ type: 'sessions', sessions: [...sessions.values()].map(meta) }));
+        safeSend(ws, stateMsg());
       } else {
         safeSend(ws, JSON.stringify({ type: 'error', message: 'auth required' }));
         ws.close();
