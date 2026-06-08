@@ -134,7 +134,8 @@ function setupUpdates() {
   autoUpdater.on('update-available', (info) => {
     if (win) win.webContents.send('update-available', { version: info.version, notes: notesToText(info.releaseNotes) });
   });
-  autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(false, true));
+  // isSilent=true -> NSIS runs with /S: no wizard, updates in place where the app already is.
+  autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(true, true));
   autoUpdater.on('error', () => { /* ignore (e.g. no releases yet / offline) */ });
   ipcMain.on('install-update', () => { autoUpdater.downloadUpdate().catch(() => {}); });
   autoUpdater.checkForUpdates().catch(() => {});

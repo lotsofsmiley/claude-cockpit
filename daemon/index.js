@@ -255,10 +255,10 @@ function spawnSession(opts = {}) {
   const args = opts.args || DEFAULT_SHELL_ARGS;
   const cols = opts.cols || 80, rows = opts.rows || 24;
   const isClaude = !!opts.claude;
-  // A "resume" template (interactive picker) has no deterministic id; a normal claude
-  // launch gets one we can later resume by id. A restored record carries its own id.
-  const picker = isClaude && !!opts.resume && !opts.claudeId;
-  const claudeId = isClaude && !picker ? (opts.claudeId || crypto.randomUUID()) : null;
+  // Every managed claude tab pins its conversation with a stable --session-id, so it restores to
+  // the EXACT chat. Fresh launch gets a new id; a restored record reuses its id. Legacy records
+  // (opened with the old interactive picker) have no id -> picker fallback on restore only.
+  const claudeId = isClaude ? (opts.claudeId || (opts.restore ? null : crypto.randomUUID())) : null;
   const env = Object.assign({}, process.env, {
     ADD_TERM_TAB_ID: id,
     COCLAUDE_HOOK_URL: `http://${HOST}:${PORT}/hook`,
@@ -269,7 +269,7 @@ function spawnSession(opts = {}) {
     cwd, shell, args, cols, rows, createdAt: opts.createdAt || iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
     state: null, stateAt: null, lastDataAt: 0, island: opts.island || null,
-    claude: isClaude, claudeId, resume: picker, prompt: opts.prompt || null, run: opts.run || null,
+    claude: isClaude, claudeId, resume: isClaude && !claudeId, prompt: opts.prompt || null, run: opts.run || null,
   };
   sessions.set(id, s);
   p.onData((data) => {
@@ -291,9 +291,9 @@ function spawnSession(opts = {}) {
   let initCmd = '';
   if (opts.restore) {
     if (claudeId) initCmd = claudeCmd('resume-id', { claudeId });
-    else if (picker) initCmd = claudeCmd('resume-picker');
+    else if (isClaude) initCmd = claudeCmd('resume-picker'); // legacy session with no pinned id
   } else if (isClaude) {
-    initCmd = picker ? claudeCmd('resume-picker') : claudeCmd('new', { claudeId, prompt: opts.prompt });
+    initCmd = claudeCmd('new', { claudeId, prompt: opts.prompt });
   } else if (opts.run) {
     initCmd = /\r?\n$/.test(opts.run) ? opts.run : opts.run + '\r\n';
   }

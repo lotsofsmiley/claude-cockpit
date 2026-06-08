@@ -2,6 +2,26 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.3
+
+### Fixed
+- **Updates are now silent and in-place** — no installer wizard, no location prompt. The app
+  updates exactly where it is, in the background, then relaunches (the wizard was the NSIS
+  installer running interactively; it now runs with `/S`).
+- **Claude tabs pin their conversation** (`--session-id`), so on any restart/update each tab
+  restores to the *exact* chat instead of dumping you in the resume picker. (Tabs opened before
+  this update have no pinned id and show the picker one last time — re-pick them once and
+  they're permanent.)
+- **Attention badge** only flags work that *started* while a tab was in the background — opening
+  a tab (which makes Claude repaint) no longer re-trips the badge.
+- **Can't type into the terminal behind a modal** anymore (update / palette / session-types
+  grab keystrokes instead of leaking them to the shell).
+- **Taskbar icon** restored to the original `>_` design, enlarged to fill the icon like other
+  apps' taskbar icons (was a different blue-tile design).
+
+### Note
+- Engine revision bumped, so the daemon restarts once to apply (sessions restore through it).
+
 ## 0.3.2
 
 ### Fixed

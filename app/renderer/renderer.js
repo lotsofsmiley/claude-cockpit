@@ -79,6 +79,7 @@ const prevState = new Map();
 const attention = new Set(); // tabs that finished work while not focused
 const everSeen = new Set();  // tabs you've actually opened — only these can raise an attention badge
 const quietTimers = new Map(); // id -> timer: confirm a session is *really* done before flagging (not a mid-stream pause)
+const bgRun = new Map();      // id -> bool: did the current run begin while the tab was in the background? (only background work badges)
 const pendingSpawns = [];
 let renamingActive = false;  // an inline rename is open — don't let a rail re-render or focus-steal clobber it
 let railDirty = false;       // a rail re-render was deferred during a rename
@@ -193,7 +194,7 @@ function renderRail() {
 /* ---- actions ---- */
 function attach(id) {
   if (id === activeId || !sessions.has(id)) return;
-  activeId = id; attention.delete(id); everSeen.add(id); term.clear();
+  activeId = id; attention.delete(id); everSeen.add(id); bgRun.delete(id); term.clear();
   const qt = quietTimers.get(id); if (qt) { clearTimeout(qt); quietTimers.delete(id); }
   send({ type: 'attach', id });
   // match this pty to the current window size, so switching tabs never shows a stale layout
@@ -572,6 +573,7 @@ function openUpdateModal() {
   const go = document.getElementById('umGo'); go.disabled = false; go.textContent = 'Update & restart';
   document.getElementById('updateBar').classList.add('hidden');
   document.getElementById('updateModal').classList.remove('hidden');
+  term.blur(); go.focus(); // take focus off the terminal so keystrokes don't leak behind the modal
 }
 function dismissUpdateModal() {
   document.getElementById('updateModal').classList.add('hidden');
@@ -629,11 +631,12 @@ function connect() {
         for (const s of sessions.values()) {
           const prev = prevState.get(s.id);
           if (s.state === 'running') {
-            // new activity — cancel any pending "finished" confirmation (this was just a pause)
+            if (prev !== 'running') bgRun.set(s.id, s.id !== activeId); // did this work BEGIN in the background?
             const t = quietTimers.get(s.id); if (t) { clearTimeout(t); quietTimers.delete(s.id); }
-          } else if (prev === 'running' && s.id !== activeId && everSeen.has(s.id) && !quietTimers.has(s.id)) {
-            // a tab you've opened went quiet off-screen. Only badge it if it STAYS quiet (a real
-            // turn-end, not a mid-stream gap). This avoids the restore-flood + repeated re-flagging.
+          } else if (prev === 'running' && s.id !== activeId && everSeen.has(s.id) && bgRun.get(s.id) && !quietTimers.has(s.id)) {
+            // Only badge work that STARTED while you were elsewhere (true background work), and only
+            // once it STAYS quiet (a real turn-end). Opening a tab repaints Claude — that runs while
+            // the tab is active, so it never badges. Kills the restore-flood + re-flag-on-open.
             quietTimers.set(s.id, setTimeout(() => {
               quietTimers.delete(s.id);
               const cur = sessions.get(s.id);
@@ -643,7 +646,7 @@ function connect() {
           prevState.set(s.id, s.state);
         }
         for (const id of [...prevState.keys()]) if (!sessions.has(id)) {
-          prevState.delete(id); attention.delete(id); everSeen.delete(id);
+          prevState.delete(id); attention.delete(id); everSeen.delete(id); bgRun.delete(id);
           const t = quietTimers.get(id); if (t) { clearTimeout(t); quietTimers.delete(id); }
         }
         if (!bootstrapped) {
@@ -696,7 +699,14 @@ function doFit() {
   }, 90);
 }
 
-term.onData((d) => { if (activeId) send({ type: 'input', id: activeId, data: d }); });
+// A modal is up (update / palette / session-types) — swallow keystrokes so they don't leak into
+// the terminal behind it.
+function modalBlocking() {
+  return !document.getElementById('updateModal').classList.contains('hidden')
+    || !document.getElementById('palette').classList.contains('hidden')
+    || !document.getElementById('modal').classList.contains('hidden');
+}
+term.onData((d) => { if (activeId && !modalBlocking()) send({ type: 'input', id: activeId, data: d }); });
 window.addEventListener('resize', doFit);
 connect();
 setTimeout(doFit, 200);

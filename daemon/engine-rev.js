@@ -7,4 +7,4 @@
  * installed code is newer, it offers "restart engine" (sessions resume via restore). Pure
  * GUI/renderer updates leave this number alone, so they never prompt an engine restart.
  */
-module.exports = 1;
+module.exports = 2;
