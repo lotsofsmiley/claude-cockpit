@@ -545,6 +545,23 @@ function dismissUpdateModal() {
     document.getElementById('updateBar').classList.remove('hidden');
   }
 }
+/* ---- engine (daemon) update: shown when the running engine is older than the installed
+   code. One click restarts the engine; restore brings the sessions back (Claude resumes). ---- */
+const installedEngineRev = (window.cockpit && window.cockpit.engineRev) || 0;
+function checkEngine(runningRev) {
+  const bar = document.getElementById('engineBar');
+  if (installedEngineRev > (runningRev || 0)) {
+    bar.textContent = '⚙ Engine update ready — click to restart';
+    bar.classList.remove('hidden');
+  } else { bar.classList.add('hidden'); }
+}
+if (window.cockpit && window.cockpit.restartEngine) {
+  document.getElementById('engineBar').onclick = () => {
+    document.getElementById('engineBar').textContent = 'Restarting engine — sessions resuming…';
+    window.cockpit.restartEngine(); // WS drops, reconnects, and re-checks on the next hello-ok
+  };
+}
+
 if (window.cockpit && window.cockpit.onUpdateAvailable) {
   window.cockpit.onUpdateAvailable((u) => { pendingUpdate = (typeof u === 'string') ? { version: u, notes: '' } : u; openUpdateModal(); });
   document.getElementById('umGo').onclick = () => {
@@ -567,6 +584,7 @@ function connect() {
     switch (m.type) {
       case 'hello-ok':
         daemonLabel = `daemon pid ${m.daemon.pid} · v${m.daemon.version}`; setStatus();
+        checkEngine(m.daemon.engineRev);
         send({ type: 'config' });
         break;
       case 'sessions': {

@@ -9,6 +9,10 @@ const path = require('path');
 // Honor COCLAUDE_STATE_DIR so a dev/test window reads its own isolated daemon.
 const STATE_DIR = process.env.COCLAUDE_STATE_DIR || path.join(os.homedir(), '.coclaude-pit');
 
+// The engine rev THIS (installed) build expects. Compared against the running daemon's rev
+// to detect a pending engine update. Falls back gracefully if the file can't be resolved.
+const ENGINE_REV = (() => { try { return require('../daemon/engine-rev'); } catch { return 0; } })();
+
 function readDaemon() {
   try {
     return JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'daemon.json'), 'utf8'));
@@ -21,4 +25,6 @@ contextBridge.exposeInMainWorld('cockpit', {
   clipboardWrite: (t) => clipboard.writeText(t),
   onUpdateAvailable: (cb) => ipcRenderer.on('update-available', (e, v) => cb(v)),
   installUpdate: () => ipcRenderer.send('install-update'),
+  engineRev: ENGINE_REV,
+  restartEngine: () => ipcRenderer.send('restart-engine'),
 });

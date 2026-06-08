@@ -20,6 +20,7 @@ const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
 const VERSION = (() => { try { return require('../package.json').version; } catch { return '0.0.0'; } })();
+const ENGINE_REV = (() => { try { return require('./engine-rev'); } catch { return 0; } })();
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.COCLAUDE_PORT) || 4317;
 const STATE_DIR = process.env.COCLAUDE_STATE_DIR || path.join(os.homedir(), '.coclaude-pit');
@@ -462,7 +463,7 @@ server.listen(PORT, HOST, () => {
   writeMcpConfig();
   startMediaHelper();
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(
-    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
+    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, engineRev: ENGINE_REV, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
   restoreSessions(); // reboot-restore: re-spawn sessions that survived to the last persist
@@ -485,7 +486,7 @@ wss.on('connection', (ws) => {
     if (!client.authed) {
       if (m.type === 'hello' && m.token === TOKEN) {
         client.authed = true;
-        safeSend(ws, JSON.stringify({ type: 'hello-ok', daemon: { pid: process.pid, version: VERSION } }));
+        safeSend(ws, JSON.stringify({ type: 'hello-ok', daemon: { pid: process.pid, version: VERSION, engineRev: ENGINE_REV } }));
         safeSend(ws, stateMsg());
         if (mediaState) safeSend(ws, JSON.stringify({ type: 'media', media: { ...mediaState, thumb: mediaThumb } }));
       } else {

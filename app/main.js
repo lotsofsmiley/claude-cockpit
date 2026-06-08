@@ -38,6 +38,27 @@ async function ensureDaemon() {
   for (let i = 0; i < 40 && !daemonAlive(); i++) await new Promise((r) => setTimeout(r, 100));
 }
 
+// Engine migration: kill the running (older-code) daemon tree, then spawn a fresh one from the
+// installed code. The new daemon's restore re-spawns the shells and resumes Claude by id, so a
+// deliberate one-click "restart engine" loses no conversation. Used by the version-mismatch banner.
+function killDaemonTree() {
+  return new Promise((resolve) => {
+    let pid = null;
+    try { pid = JSON.parse(fs.readFileSync(DAEMON_FILE, 'utf8')).pid; } catch { /* none */ }
+    try { fs.unlinkSync(DAEMON_FILE); } catch { /* ignore */ }
+    if (!pid) return resolve();
+    if (process.platform === 'win32') {
+      const k = spawn('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
+      k.on('exit', () => resolve()); k.on('error', () => resolve());
+    } else { try { process.kill(pid); } catch { /* ignore */ } resolve(); }
+  });
+}
+ipcMain.on('restart-engine', async () => {
+  await killDaemonTree();
+  await new Promise((r) => setTimeout(r, 400));
+  await ensureDaemon(); // restore re-spawns sessions; the renderer's WS auto-reconnects
+});
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1100, height: 720, backgroundColor: '#0b0d10', title: 'claudpit',

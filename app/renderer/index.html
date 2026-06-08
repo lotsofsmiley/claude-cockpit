@@ -63,6 +63,9 @@
     #updateBar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 200; background: #1f6feb; color: #fff; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
     #updateBar.hidden { display: none; }
     #updateBar:hover { filter: brightness(1.07); }
+    #engineBar { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 200; background: #8a6d00; color: #fff; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+    #engineBar.hidden { display: none; }
+    #engineBar:hover { filter: brightness(1.1); }
     #updateModal { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 210; display: flex; align-items: center; justify-content: center; }
     #updateModal.hidden { display: none; }
     .um-box { width: 520px; max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column; background: #11151c; border: 1px solid #2a3340; border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.7); overflow: hidden; }
@@ -236,6 +239,7 @@
   </div>
 
   <div id="updateBar" class="hidden" title="Show what's new"><span id="updateMsg"></span></div>
+  <div id="engineBar" class="hidden" title="Restart the engine to apply the update (sessions resume)">⚙ Engine update ready — click to restart</div>
 
   <div id="updateModal" class="hidden">
     <div class="um-box">

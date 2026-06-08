@@ -2,6 +2,21 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.1
+
+### Added
+- **Engine-update prompt (version mismatch).** The daemon now reports an engine revision. When
+  the installed code is newer than the *running* engine, a banner offers a one-click **Restart
+  engine** that re-spawns the shells and resumes every Claude conversation (via restore). This is
+  how daemon-side changes get applied — the GUI can't update the long-lived daemon in place, so
+  the engine is migrated deliberately, losing no conversation. Pure GUI/renderer updates don't
+  bump the engine revision, so they never prompt a restart.
+
+### Changed
+- Ship only the `en-US` Chromium locale (~46 MB smaller install). This affects only the language
+  of Chromium's own built-in UI (context menus, error pages) — not the app's text, the terminal,
+  Claude, fonts, or date/number formatting (that's ICU, which stays).
+
 ## 0.3.0
 
 ### Added
