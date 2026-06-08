@@ -30,8 +30,15 @@ const HOOK_SCRIPT_FILE = path.join(STATE_DIR, 'hook.ps1');
 const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
 const MCP_CONFIG_FILE = path.join(STATE_DIR, 'mcp.json');
 const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
-const VAULT_DIR = process.env.COCLAUDE_VAULT || 'C:\\add\\vaults\\ADD-Vault';
-const HANDOFFS_DIR = path.join(VAULT_DIR, '99-Meta', 'Handoffs');
+const CONFIG_FILE = path.join(STATE_DIR, 'config.json');
+// Shipped defaults for a fresh user: generic session openers, no vault.
+const DEFAULT_CONFIG = {
+  templates: [
+    { label: 'PowerShell', name: 'pwsh', shell: 'powershell.exe', args: ['-NoLogo'], cwd: null, color: null },
+    { label: 'Claude (here)', name: 'claude', shell: 'powershell.exe', args: ['-NoLogo'], cwd: null, color: '#e3b341', claude: true },
+  ],
+  vaultPath: null,
+};
 const STATE_BY_EVENT = {
   SessionStart: 'running', UserPromptSubmit: 'running',
   PreToolUse: 'running', PostToolUse: 'running',
@@ -46,6 +53,11 @@ const DEFAULT_SHELL_ARGS = process.env.COCLAUDE_SHELL_ARGS
 
 fs.mkdirSync(STATE_DIR, { recursive: true });
 const TOKEN = process.env.COCLAUDE_TOKEN || crypto.randomBytes(24).toString('hex');
+
+// User config (session-opener templates + optional vault path). Created on first run.
+let config;
+try { config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+catch { config = DEFAULT_CONFIG; try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch { /* ignore */ } }
 
 /** @type {Map<string, any>} */
 const sessions = new Map();
@@ -124,14 +136,16 @@ function broadcastSessions() {
 
 // Read the vault's open handoffs (title + priority) for the dashboard.
 function readHandoffs() {
+  if (!config.vaultPath) return [];
+  const dir = path.join(config.vaultPath, '99-Meta', 'Handoffs');
   const rank = { high: 0, medium: 1, low: 2 };
   const out = [];
   try {
-    for (const f of fs.readdirSync(HANDOFFS_DIR)) {
+    for (const f of fs.readdirSync(dir)) {
       if (!f.endsWith('.md')) continue;
       let title = f.replace(/\.md$/, ''), priority = null;
       try {
-        const txt = fs.readFileSync(path.join(HANDOFFS_DIR, f), 'utf8').slice(0, 4000);
+        const txt = fs.readFileSync(path.join(dir, f), 'utf8').slice(0, 4000);
         const h = txt.match(/^#\s+(.+)$/m); if (h) title = h[1].trim();
         const p = txt.match(/\[P:(high|medium|low)\]/i) || txt.match(/priority:\s*(high|medium|low)/i);
         if (p) priority = p[1].toLowerCase();
@@ -272,7 +286,16 @@ function handle(client, m) {
       break;
     }
     case 'dashboard':
-      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs() }));
+      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), hasVault: !!config.vaultPath }));
+      break;
+    case 'config':
+      safeSend(ws, JSON.stringify({ type: 'config-data', templates: config.templates || [], vaultPath: config.vaultPath || null }));
+      break;
+    case 'config-save':
+      if (Array.isArray(m.templates)) config.templates = m.templates;
+      if (m.vaultPath !== undefined) config.vaultPath = m.vaultPath || null;
+      try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch { /* ignore */ }
+      safeSend(ws, JSON.stringify({ type: 'config-data', templates: config.templates || [], vaultPath: config.vaultPath || null }));
       break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }

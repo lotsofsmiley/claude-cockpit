@@ -2,15 +2,8 @@
 /* Renderer: pure browser context, talks to the daemon over WebSocket only.
  * Phase 1 tabs + Phase 2 Claude-state + tab islands (named/colored/collapsible groups). */
 
-const VAULT = 'C:\\add\\vaults\\ADD-Vault';
-const TEMPLATES = [
-  { label: 'PowerShell · home',  name: 'pwsh',         shell: 'powershell.exe', args: ['-NoLogo'], cwd: null,           color: null },
-  { label: 'PowerShell · vault', name: 'vault',        shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#7aa2f7' },
-  { label: 'Claude · vault',     name: 'claude:vault', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#e3b341', claude: true },
-  { label: 'Claude · resume',    name: 'claude:resume', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#bc8cff', claude: true, resume: true },
-  { label: 'PowerShell · dev',   name: 'dev',          shell: 'powershell.exe', args: ['-NoLogo'], cwd: 'C:\\add\\dev', color: null },
-];
 const COLORS = ['#3fb950', '#7aa2f7', '#e3b341', '#f85149', '#bc8cff', '#39c5cf', '#ff9e64'];
+const DEFAULT_TEMPLATE = { label: 'PowerShell', name: 'pwsh', shell: 'powershell.exe', args: ['-NoLogo'], cwd: null, color: null };
 const SVG = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICONS = {
   plus: SVG('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
@@ -69,6 +62,8 @@ let islandList = [];                 // [{id,name,color,collapsed,order}]
 let notifyOn = localStorage.getItem('coclaude.notify') === '1'; // desktop notifications: off by default
 let fitTimer = null;
 let dashOpen = false;
+let templates = [];
+let vaultPath = null;
 let renameIslandId = null;           // island to inline-rename on next render (just created)
 const sessions = new Map();
 const prevState = new Map();
@@ -212,7 +207,7 @@ function closeTab(id) {
   const label = s ? (s.name || 'session') : 'session';
   if (window.confirm(`Close "${label}"? This kills the session and any process in it.`)) send({ type: 'kill', id });
 }
-function spawnTemplate(t) { pendingSpawns.push(t); send({ type: 'spawn', name: t.name, color: t.color, cwd: t.cwd, shell: t.shell, args: t.args }); }
+function spawnTemplate(t) { pendingSpawns.push(t); send({ type: 'spawn', name: t.name || t.label, color: t.color, cwd: t.cwd, shell: t.shell || 'powershell.exe', args: t.args || ['-NoLogo'] }); }
 
 /* ---- menus ---- */
 function hideMenus() { newMenu.classList.add('hidden'); tabMenu.classList.add('hidden'); }
@@ -240,9 +235,10 @@ function swatchRow(onPick) {
 function openNewMenu(x, y) {
   newMenu.innerHTML = '';
   newMenu.appendChild(label('New session'));
-  TEMPLATES.forEach((t) => newMenu.appendChild(item(t.label, () => { hideMenus(); spawnTemplate(t); })));
+  templates.forEach((t) => newMenu.appendChild(item(t.label, () => { hideMenus(); spawnTemplate(t); })));
   newMenu.appendChild(sep());
   newMenu.appendChild(item('＋ New island', () => { hideMenus(); createIsland(); }));
+  newMenu.appendChild(item('⚙ Manage session types…', () => { hideMenus(); openTemplateManager(); }));
   placeMenu(newMenu, x, y);
 }
 
@@ -314,9 +310,15 @@ function renderDash(data) {
     ? notes.map((n) => `<div class="dash-item"><div style="flex:1"><div class="dash-msg">${esc(n.message)}</div><div class="dash-meta">${n.at ? n.at.slice(11, 16) : ''} · ${esc(n.level || '')}</div></div></div>`).join('')
     : '<div class="dash-empty">No messages yet.</div>';
   const hs = data.handoffs || [];
-  document.getElementById('dashHandoffs').innerHTML = hs.length
-    ? hs.map((h) => `<div class="dash-item"><span class="pri pri-${h.priority || 'none'}"></span><span class="dash-msg">${esc(h.title)}</span></div>`).join('')
-    : '<div class="dash-empty">No open handoffs.</div>';
+  const ho = document.getElementById('dashHandoffs');
+  if (!data.hasVault) {
+    ho.innerHTML = '<div class="dash-cta">No vault connected. claudpit can read an Obsidian-style <b>second brain</b> — a folder of markdown notes — and surface what needs you. Point it at a vault and let Claude work from it.<br><span id="setVault" class="dash-link">Set vault folder…</span></div>';
+    const sv = document.getElementById('setVault'); if (sv) sv.onclick = promptVault;
+  } else {
+    ho.innerHTML = hs.length
+      ? hs.map((h) => `<div class="dash-item"><span class="pri pri-${h.priority || 'none'}"></span><span class="dash-msg">${esc(h.title)}</span></div>`).join('')
+      : '<div class="dash-empty">No open handoffs.</div>';
+  }
 }
 function openDash(on) {
   dashOpen = on;
@@ -326,6 +328,54 @@ function openDash(on) {
 document.getElementById('btnDash').innerHTML = ICONS.inbox;
 document.getElementById('btnDash').onclick = () => openDash(!dashOpen);
 document.getElementById('dashClose').onclick = () => openDash(false);
+
+/* ---- session-type manager (user-editable openers) ---- */
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+document.getElementById('modalClose').onclick = closeModal;
+function mkBtn(t, fn) { const b = document.createElement('span'); b.className = 't-btn'; b.textContent = t; b.onclick = fn; return b; }
+function mkInput(cls, val, fn, ph) { const i = document.createElement('input'); i.type = 'text'; i.className = cls; i.value = val; i.placeholder = ph || ''; i.oninput = () => fn(i.value); return i; }
+function mkChk(t, on, fn) { const l = document.createElement('label'); l.className = 'chk'; const c = document.createElement('input'); c.type = 'checkbox'; c.checked = on; c.onchange = () => fn(c.checked); l.append(c, document.createTextNode(t)); return l; }
+function promptVault() {
+  const ho = document.getElementById('dashHandoffs');
+  ho.innerHTML = '<input id="vaultInput" type="text" placeholder="C:\\path\\to\\vault"><div class="dash-meta">Folder containing 99-Meta/Handoffs/. Press Enter.</div>';
+  const inp = document.getElementById('vaultInput'); inp.focus();
+  inp.onkeydown = (e) => { if (e.key === 'Enter') { vaultPath = inp.value.trim() || null; send({ type: 'config-save', vaultPath }); setTimeout(() => send({ type: 'dashboard' }), 100); } };
+}
+function openTemplateManager() {
+  const rows = templates.map((t) => ({ ...t }));
+  const palette = [['none', ''], ['blue', '#7aa2f7'], ['amber', '#e3b341'], ['green', '#3fb950'], ['red', '#f85149'], ['purple', '#bc8cff'], ['cyan', '#39c5cf']];
+  function draw() {
+    document.getElementById('modalTitle').textContent = 'Session types';
+    const body = document.getElementById('modalBody');
+    body.innerHTML = '';
+    rows.forEach((t, i) => {
+      const row = document.createElement('div'); row.className = 'tmpl-row';
+      const up = mkBtn('↑', () => { if (i > 0) { [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]]; draw(); } });
+      const down = mkBtn('↓', () => { if (i < rows.length - 1) { [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]]; draw(); } });
+      const lbl = mkInput('t-label', t.label || '', (v) => { t.label = v; }, 'Label');
+      const cwd = mkInput('t-cwd', t.cwd || '', (v) => { t.cwd = v || null; }, 'Folder (blank = home)');
+      const sel = document.createElement('select');
+      palette.forEach(([nm, hex]) => { const o = document.createElement('option'); o.value = hex; o.textContent = nm; if ((t.color || '') === hex) o.selected = true; sel.appendChild(o); });
+      sel.onchange = () => { t.color = sel.value || null; };
+      const cl = mkChk('Claude', !!t.claude, (v) => { t.claude = v; });
+      const rs = mkChk('Resume', !!t.resume, (v) => { t.resume = v; });
+      const del = mkBtn('✕', () => { rows.splice(i, 1); draw(); });
+      row.append(up, down, lbl, cwd, sel, cl, rs, del);
+      body.appendChild(row);
+    });
+    const hint = document.createElement('div'); hint.className = 'modal-hint';
+    hint.textContent = 'Label = menu text · Folder = working directory · Claude = run claude on open · Resume = open the resumable-session picker.';
+    body.appendChild(hint);
+    const actions = document.createElement('div'); actions.className = 'modal-actions';
+    const add = document.createElement('button'); add.textContent = '+ Add'; add.onclick = () => { rows.push({ label: 'New session', shell: 'powershell.exe', args: ['-NoLogo'], cwd: null, color: null }); draw(); };
+    const save = document.createElement('button'); save.className = 'primary'; save.textContent = 'Save'; save.onclick = () => { templates = rows.map((t) => ({ ...t, name: t.name || t.label })); send({ type: 'config-save', templates }); closeModal(); };
+    const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.onclick = closeModal;
+    actions.append(add, save, cancel);
+    body.appendChild(actions);
+  }
+  draw();
+  document.getElementById('modal').classList.remove('hidden');
+}
 
 /* ---- connection ---- */
 function connect() {
@@ -338,6 +388,7 @@ function connect() {
     switch (m.type) {
       case 'hello-ok':
         daemonLabel = `daemon pid ${m.daemon.pid} · v${m.daemon.version}`; setStatus();
+        send({ type: 'config' });
         break;
       case 'sessions': {
         sessions.clear();
@@ -350,7 +401,7 @@ function connect() {
         for (const id of [...prevState.keys()]) if (!sessions.has(id)) prevState.delete(id);
         if (!bootstrapped) {
           bootstrapped = true;
-          if (sessions.size === 0) spawnTemplate(TEMPLATES[0]);
+          if (sessions.size === 0) spawnTemplate(templates[0] || DEFAULT_TEMPLATE);
           else attach(firstId());
         } else {
           if (activeId && !sessions.has(activeId)) { activeId = null; term.clear(); }
@@ -377,6 +428,7 @@ function connect() {
       case 'exit':     if (m.id === activeId) term.writeln(`\r\n\x1b[31m[session exited: ${m.exitCode}]\x1b[0m`); break;
       case 'notify':   if (notifyOn) { try { new Notification('claudpit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } if (dashOpen) send({ type: 'dashboard' }); break;
       case 'dashboard-data': renderDash(m); break;
+      case 'config-data': templates = m.templates || []; vaultPath = m.vaultPath || null; break;
     }
   };
 }

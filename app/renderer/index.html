@@ -102,6 +102,29 @@
     #dash .pri-high { background: #f85149; }
     #dash .pri-medium { background: #e3b341; }
     #dash .pri-low { background: #3fb950; }
+    #dash .dash-cta { font-size: 12.5px; color: #8b95a7; line-height: 1.5; background: #141a24; border: 1px dashed #2a3340; border-radius: 8px; padding: 10px; }
+    #dash .dash-link { color: #7aa2f7; cursor: pointer; display: inline-block; margin-top: 6px; }
+    #dash .dash-link:hover { text-decoration: underline; }
+    #dash input { width: 100%; background: #0b0d10; border: 1px solid #232b3a; color: #cdd6e4; border-radius: 5px; padding: 6px 8px; font: inherit; }
+
+    #modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; display: flex; align-items: center; justify-content: center; }
+    .modal-box { background: #11151c; border: 1px solid #232b3a; border-radius: 10px; width: 620px; max-width: 92vw; max-height: 86vh; overflow-y: auto; padding: 16px; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; color: #7aa2f7; font-size: 14px; margin-bottom: 14px; }
+    .modal-head #modalClose { cursor: pointer; color: #5c6675; }
+    .modal-head #modalClose:hover { color: #fff; }
+    .tmpl-row { display: flex; align-items: center; gap: 6px; padding: 6px; background: #141a24; border-radius: 6px; margin-bottom: 6px; }
+    .tmpl-row input[type=text] { background: #0b0d10; border: 1px solid #232b3a; color: #cdd6e4; border-radius: 5px; padding: 5px 7px; font: inherit; }
+    .tmpl-row .t-label { width: 140px; flex: 0 0 auto; }
+    .tmpl-row .t-cwd { flex: 1; min-width: 60px; }
+    .tmpl-row select { background: #0b0d10; border: 1px solid #232b3a; color: #cdd6e4; border-radius: 5px; padding: 5px; }
+    .tmpl-row label.chk { font-size: 12px; color: #aeb6c2; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .tmpl-row .t-btn { cursor: pointer; color: #5c6675; padding: 3px 6px; border-radius: 4px; flex: 0 0 auto; }
+    .tmpl-row .t-btn:hover { color: #fff; background: #1b2230; }
+    .modal-hint { font-size: 12px; color: #5c6675; margin: 10px 2px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .modal-actions button { background: #141a24; color: #cdd6e4; border: 1px solid #232b3a; border-radius: 6px; padding: 7px 13px; cursor: pointer; font: inherit; }
+    .modal-actions .primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .modal-actions button:hover { filter: brightness(1.15); }
   </style>
 </head>
 <body>
@@ -131,6 +154,13 @@
 
   <div id="newMenu" class="menu hidden"></div>
   <div id="tabMenu" class="menu hidden"></div>
+
+  <div id="modal" class="hidden">
+    <div class="modal-box">
+      <div class="modal-head"><span id="modalTitle">Session types</span><span id="modalClose">✕</span></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
 
   <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
