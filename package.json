@@ -13,7 +13,9 @@
     "test:survive": "node daemon/test-survive.js",
     "test:state": "node daemon/test-state.js",
     "test:islands": "node daemon/test-islands.js",
-    "test:operator": "node daemon/test-operator.mjs"
+    "test:operator": "node daemon/test-operator.mjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -25,6 +27,31 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "electron": "^42.3.3"
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.2"
+  },
+  "build": {
+    "appId": "com.lotsofsmiley.claudpit",
+    "productName": "claudpit",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "asarUnpack": [
+      "daemon/**",
+      "mcp/**",
+      "**/node_modules/node-pty/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "app/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

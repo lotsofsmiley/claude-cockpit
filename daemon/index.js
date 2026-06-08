@@ -119,7 +119,9 @@ function writeClaudeHooks() {
 // MCP config the cockpit's Claude templates load via --mcp-config, so a claude
 // session running in a tab can operate the cockpit (spawn/rename/move/notify...).
 function writeMcpConfig() {
-  const cfg = { mcpServers: { 'coclaude-pit': { command: process.execPath, args: [MCP_SERVER_PATH] } } };
+  const server = { command: process.execPath, args: [MCP_SERVER_PATH] };
+  if (process.versions.electron) server.env = { ELECTRON_RUN_AS_NODE: '1' }; // packaged: run our exe as Node
+  const cfg = { mcpServers: { 'coclaude-pit': server } };
   try { fs.writeFileSync(MCP_CONFIG_FILE, JSON.stringify(cfg, null, 2)); } catch { /* ignore */ }
 }
 

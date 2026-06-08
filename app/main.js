@@ -19,9 +19,16 @@ function daemonAlive() {
 
 async function ensureDaemon() {
   if (daemonAlive()) return;
-  const child = spawn(process.platform === 'win32' ? 'node.exe' : 'node',
-    [path.join(__dirname, '..', 'daemon', 'index.js')],
-    { detached: true, stdio: 'ignore' });
+  const daemonPath = path.join(__dirname, '..', 'daemon', 'index.js');
+  let cmd, args, env;
+  if (app.isPackaged) {
+    // packaged: run the daemon with our own binary as Node — node-pty is rebuilt for Electron's ABI
+    cmd = process.execPath; args = [daemonPath]; env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+  } else {
+    // dev: system node (node-pty is built for system Node)
+    cmd = process.platform === 'win32' ? 'node.exe' : 'node'; args = [daemonPath]; env = process.env;
+  }
+  const child = spawn(cmd, args, { detached: true, stdio: 'ignore', env });
   child.unref();
   for (let i = 0; i < 40 && !daemonAlive(); i++) await new Promise((r) => setTimeout(r, 100));
 }
