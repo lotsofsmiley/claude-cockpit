@@ -36,6 +36,28 @@
     #railhead button:hover { background: #1b2230; color: #fff; }
     #railhead button svg { width: 15px; height: 15px; }
 
+    #media { padding: 8px; background: #0e1116; }
+    .layout-left #media { margin-top: auto; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; }
+    .layout-top #media { margin-left: auto; border-left: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 10px; }
+    .m-now { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .m-art { width: 36px; height: 36px; border-radius: 5px; overflow: hidden; background: #141a24; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #5c6675; }
+    .m-art img { width: 100%; height: 100%; object-fit: cover; }
+    .m-art svg { width: 18px; height: 18px; }
+    .m-info { min-width: 0; }
+    .m-title { font-size: 12.5px; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 132px; }
+    .m-artist { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 132px; }
+    .m-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .m-controls { display: flex; align-items: center; gap: 9px; }
+    .m-btn { cursor: pointer; color: #aeb6c2; display: inline-flex; }
+    .m-btn svg { width: 16px; height: 16px; }
+    .m-btn:hover { color: #fff; }
+    #mPlay svg { width: 19px; height: 19px; }
+    .m-remain { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .m-bar { height: 3px; background: #1c2230; border-radius: 2px; overflow: hidden; }
+    #mFill { height: 100%; width: 0; background: #7aa2f7; transition: width .3s linear; }
+    .layout-top .m-bar { width: 80px; }
+    .layout-top .m-info .m-artist { display: none; }
+
     #tabs { display: flex; gap: 6px; min-width: 0; }
     .layout-left #tabs { flex-direction: column; }
     .layout-top  #tabs { flex-direction: row; align-items: center; }
@@ -44,6 +66,8 @@
     .tab { padding: 6px 8px; border-radius: 6px; background: var(--tab); font-size: 13px;
       cursor: pointer; display: flex; align-items: center; gap: 7px; max-width: 200px; }
     .tab.active { background: rgba(31,111,235,.20); outline: 1px solid rgba(31,111,235,.4); }
+    .tab.attention { background: rgba(227,179,65,.14); outline: 1px solid rgba(227,179,65,.55); }
+    .tab .badge { color: #e3b341; font-weight: 700; font-size: 13px; flex: 0 0 auto; }
     .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
     @keyframes cocPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
     .tab .dot.pulse { animation: cocPulse 1.1s ease-in-out infinite; }
@@ -141,6 +165,17 @@
         </div>
       </div>
       <div id="tabs"></div>
+      <div id="media" class="hidden">
+        <div class="m-now">
+          <span class="m-art"><img id="mediaArt" alt=""><span id="mArtFallback"></span></span>
+          <div class="m-info"><div id="mTitle" class="m-title"></div><div id="mArtist" class="m-artist"></div></div>
+        </div>
+        <div class="m-row">
+          <div class="m-controls"><span id="mPrev" class="m-btn"></span><span id="mPlay" class="m-btn"></span><span id="mNext" class="m-btn"></span></div>
+          <span id="mRemain" class="m-remain"></span>
+        </div>
+        <div class="m-bar"><div id="mFill"></div></div>
+      </div>
     </div>
     <div id="main">
       <div id="term"></div>

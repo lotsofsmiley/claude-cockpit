@@ -5,6 +5,7 @@
 const COLORS = ['#3fb950', '#7aa2f7', '#e3b341', '#f85149', '#bc8cff', '#39c5cf', '#ff9e64'];
 const DEFAULT_TEMPLATE = { label: 'PowerShell', name: 'pwsh', shell: 'powershell.exe', args: ['-NoLogo'], cwd: null, color: null };
 const SVG = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const SVGF = (p) => `<svg viewBox="0 0 24 24" fill="currentColor">${p}</svg>`;
 const ICONS = {
   plus: SVG('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
   bell: SVG('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
@@ -12,6 +13,11 @@ const ICONS = {
   sidebar: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>'),
   panelTop: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>'),
   inbox: SVG('<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'),
+  play: SVGF('<polygon points="7 4 20 12 7 20"/>'),
+  pause: SVGF('<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>'),
+  prev: SVGF('<polygon points="19 20 9 12 19 4"/><rect x="5" y="4" width="2.6" height="16" rx="1"/>'),
+  next: SVGF('<polygon points="5 4 15 12 5 20"/><rect x="16.4" y="4" width="2.6" height="16" rx="1"/>'),
+  music: SVG('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
 };
 
 const daemon = window.cockpit && window.cockpit.daemon;
@@ -67,6 +73,7 @@ let vaultPath = null;
 let renameIslandId = null;           // island to inline-rename on next render (just created)
 const sessions = new Map();
 const prevState = new Map();
+const attention = new Set(); // tabs that finished work while not focused
 const pendingSpawns = [];
 
 const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
@@ -98,7 +105,7 @@ function setStatus() {
 /* ---- rail rendering (islands + ungrouped) ---- */
 function buildTab(s) {
   const el = document.createElement('div');
-  el.className = 'tab' + (s.id === activeId ? ' active' : '') + (s.island ? ' in-island' : '');
+  el.className = 'tab' + (s.id === activeId ? ' active' : '') + (s.island ? ' in-island' : '') + (attention.has(s.id) ? ' attention' : '');
   el.dataset.id = s.id;
 
   const dot = document.createElement('span');
@@ -116,7 +123,8 @@ function buildTab(s) {
   x.className = 'x'; x.textContent = '×'; x.title = 'Close session';
   x.onclick = (e) => { e.stopPropagation(); closeTab(s.id); };
 
-  el.append(dot, name, x);
+  if (attention.has(s.id)) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = '!'; el.append(dot, name, b, x); }
+  else el.append(dot, name, x);
   el.onclick = () => attach(s.id);
   el.oncontextmenu = (e) => { e.preventDefault(); openTabMenu(e.clientX, e.clientY, s.id); };
   return el;
@@ -176,7 +184,7 @@ function renderRail() {
 /* ---- actions ---- */
 function attach(id) {
   if (id === activeId || !sessions.has(id)) return;
-  activeId = id; term.clear();
+  activeId = id; attention.delete(id); term.clear();
   send({ type: 'attach', id });
   renderRail();
   term.focus(); // a tab click must leave you ready to type immediately
@@ -377,6 +385,35 @@ function openTemplateManager() {
   document.getElementById('modal').classList.remove('hidden');
 }
 
+/* ---- media (OS now-playing) ---- */
+let media = null;
+function fmtTime(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function updateMediaProgress() {
+  if (!media) return;
+  const pos = media.position || 0, dur = media.duration || 0;
+  document.getElementById('mFill').style.width = (dur > 0 ? Math.min(100, pos / dur * 100) : 0) + '%';
+  document.getElementById('mRemain').textContent = dur > 0 ? '-' + fmtTime(dur - pos) : '';
+}
+function renderMedia() {
+  const el = document.getElementById('media');
+  if (!media || !media.title) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const t = document.getElementById('mTitle'); t.textContent = media.title; t.title = media.title;
+  document.getElementById('mArtist').textContent = media.artist || '';
+  document.getElementById('mPlay').innerHTML = media.playing ? ICONS.pause : ICONS.play;
+  const art = document.getElementById('mediaArt'), fb = document.getElementById('mArtFallback');
+  if (media.thumb) { art.src = media.thumb; art.style.display = ''; fb.style.display = 'none'; }
+  else { art.style.display = 'none'; fb.style.display = ''; }
+  updateMediaProgress();
+}
+document.getElementById('mPrev').innerHTML = ICONS.prev;
+document.getElementById('mNext').innerHTML = ICONS.next;
+document.getElementById('mArtFallback').innerHTML = ICONS.music;
+document.getElementById('mPrev').onclick = () => send({ type: 'media-control', action: 'prev' });
+document.getElementById('mPlay').onclick = () => send({ type: 'media-control', action: 'playpause' });
+document.getElementById('mNext').onclick = () => send({ type: 'media-control', action: 'next' });
+setInterval(() => { if (media && media.playing && media.duration) { media.position = Math.min(media.duration, (media.position || 0) + 1); updateMediaProgress(); } }, 1000);
+
 /* ---- connection ---- */
 function connect() {
   if (!daemon) { statusEl.textContent = 'no daemon.json — is the daemon running?'; return; }
@@ -395,10 +432,11 @@ function connect() {
         m.sessions.forEach((s) => sessions.set(s.id, s));
         islandList = m.islands || [];
         for (const s of sessions.values()) {
-          if (s.state === 'waiting' && prevState.get(s.id) !== 'waiting') notifyWaiting(s);
+          const prev = prevState.get(s.id);
+          if (prev === 'running' && s.state !== 'running' && s.id !== activeId) attention.add(s.id); // finished off-screen
           prevState.set(s.id, s.state);
         }
-        for (const id of [...prevState.keys()]) if (!sessions.has(id)) prevState.delete(id);
+        for (const id of [...prevState.keys()]) if (!sessions.has(id)) { prevState.delete(id); attention.delete(id); }
         if (!bootstrapped) {
           bootstrapped = true;
           if (sessions.size === 0) spawnTemplate(templates[0] || DEFAULT_TEMPLATE);
@@ -429,6 +467,14 @@ function connect() {
       case 'notify':   if (notifyOn) { try { new Notification('claudpit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } if (dashOpen) send({ type: 'dashboard' }); break;
       case 'dashboard-data': renderDash(m); break;
       case 'config-data': templates = m.templates || []; vaultPath = m.vaultPath || null; break;
+      case 'media': {
+        if (!m.media) { media = null; renderMedia(); break; }
+        const prevThumb = media && media.thumb;
+        media = m.media;
+        if (!media.thumb && prevThumb) media.thumb = prevThumb;
+        renderMedia();
+        break;
+      }
     }
   };
 }

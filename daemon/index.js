@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const http = require('http');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
@@ -30,6 +30,8 @@ const HOOK_SCRIPT_FILE = path.join(STATE_DIR, 'hook.ps1');
 const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
 const MCP_CONFIG_FILE = path.join(STATE_DIR, 'mcp.json');
 const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
+const MEDIA_HELPER = path.join(__dirname, 'media-helper.ps1');
+const MEDIA_CMD_FILE = path.join(STATE_DIR, 'media-cmd.txt');
 const CONFIG_FILE = path.join(STATE_DIR, 'config.json');
 // Shipped defaults for a fresh user: generic session openers, no vault.
 const DEFAULT_CONFIG = {
@@ -65,6 +67,9 @@ const sessions = new Map();
 const islands = new Map();
 try { JSON.parse(fs.readFileSync(ISLANDS_FILE, 'utf8')).forEach((i) => islands.set(i.id, i)); } catch { /* none yet */ }
 const notifications = []; // Claude -> Filipe inbox (last 50)
+let mediaState = null;   // { playing, status, title, artist, position, duration }
+let mediaThumb = '';     // cached art data-URL (sent only when the track changes)
+let mediaHelper = null;
 /** connected clients: { ws, attached:Set<id>, authed:boolean } */
 const clients = new Set();
 
@@ -157,6 +162,35 @@ function readHandoffs() {
   } catch { /* no handoffs dir */ }
   out.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3));
   return out;
+}
+
+function broadcastMedia(payload) {
+  const msg = JSON.stringify({ type: 'media', media: payload });
+  for (const c of clients) if (c.authed) safeSend(c.ws, msg);
+}
+// Persistent hidden PowerShell helper reads Windows SMTC and streams JSON lines.
+function startMediaHelper() {
+  try {
+    mediaHelper = spawn('powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', MEDIA_HELPER],
+      { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    let buf = '';
+    mediaHelper.stdout.on('data', (d) => {
+      buf += d.toString('utf8');
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (!m.title) { if (mediaState) { mediaState = null; broadcastMedia(null); } continue; }
+        const changed = !!m.thumb;
+        if (changed) mediaThumb = m.thumb;
+        mediaState = { playing: !!m.playing, status: m.status || '', title: m.title, artist: m.artist || '', position: m.position || 0, duration: m.duration || 0 };
+        broadcastMedia(changed ? { ...mediaState, thumb: mediaThumb } : mediaState);
+      }
+    });
+    mediaHelper.on('exit', () => { mediaHelper = null; });
+  } catch { mediaHelper = null; }
 }
 
 function appendBuffer(s, data) {
@@ -299,6 +333,9 @@ function handle(client, m) {
       try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch { /* ignore */ }
       safeSend(ws, JSON.stringify({ type: 'config-data', templates: config.templates || [], vaultPath: config.vaultPath || null }));
       break;
+    case 'media-control':
+      if (['playpause', 'next', 'prev'].includes(m.action)) { try { fs.writeFileSync(MEDIA_CMD_FILE, m.action); } catch { /* ignore */ } }
+      break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }
 }
@@ -332,6 +369,7 @@ const wss = new WebSocketServer({ server });
 
 server.listen(PORT, HOST, () => {
   writeMcpConfig();
+  startMediaHelper();
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(
     { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
@@ -357,6 +395,7 @@ wss.on('connection', (ws) => {
         client.authed = true;
         safeSend(ws, JSON.stringify({ type: 'hello-ok', daemon: { pid: process.pid, version: VERSION } }));
         safeSend(ws, stateMsg());
+        if (mediaState) safeSend(ws, JSON.stringify({ type: 'media', media: { ...mediaState, thumb: mediaThumb } }));
       } else {
         safeSend(ws, JSON.stringify({ type: 'error', message: 'auth required' }));
         ws.close();
@@ -380,5 +419,5 @@ setInterval(() => {
   }
 }, 500);
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });
+process.on('SIGTERM', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });
