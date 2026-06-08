@@ -11,6 +11,7 @@
     "daemon": "node daemon/index.js",
     "start": "electron .",
     "start:dev": "node scripts/dev.js",
+    "icons": "node scripts/gen-icons.js",
     "test:survive": "node daemon/test-survive.js",
     "test:state": "node daemon/test-state.js",
     "test:islands": "node daemon/test-islands.js",
@@ -32,13 +33,17 @@
   },
   "devDependencies": {
     "electron": "^42.3.3",
-    "electron-builder": "^26.15.2"
+    "electron-builder": "^26.15.2",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
   },
   "build": {
     "appId": "com.lotsofsmiley.claudpit",
     "productName": "claudpit",
     "npmRebuild": false,
-    "electronLanguages": ["en-US"],
+    "electronLanguages": [
+      "en-US"
+    ],
     "directories": {
       "output": "dist"
     },
@@ -61,7 +66,8 @@
     "publish": {
       "provider": "github",
       "owner": "lotsofsmiley",
-      "repo": "claude-cockpit"
+      "repo": "claude-cockpit",
+      "releaseType": "release"
     }
   }
 }
