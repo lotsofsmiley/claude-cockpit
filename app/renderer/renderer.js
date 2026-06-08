@@ -412,7 +412,8 @@ document.getElementById('mArtFallback').innerHTML = ICONS.music;
 document.getElementById('mPrev').onclick = () => send({ type: 'media-control', action: 'prev' });
 document.getElementById('mPlay').onclick = () => send({ type: 'media-control', action: 'playpause' });
 document.getElementById('mNext').onclick = () => send({ type: 'media-control', action: 'next' });
-setInterval(() => { if (media && media.playing && media.duration) { media.position = Math.min(media.duration, (media.position || 0) + 1); updateMediaProgress(); } }, 1000);
+// No local tick — the daemon streams the authoritative position ~every 0.7s (monotonic),
+// so rendering on each update avoids the local-tick-vs-daemon flicker.
 
 /* ---- connection ---- */
 function connect() {
