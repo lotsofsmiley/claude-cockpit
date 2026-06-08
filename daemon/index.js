@@ -336,6 +336,10 @@ function handle(client, m) {
     case 'media-control':
       if (['playpause', 'next', 'prev', 'mute', 'volup', 'voldown'].includes(m.action)) { try { fs.writeFileSync(MEDIA_CMD_FILE, m.action); } catch { /* ignore */ } }
       break;
+    case 'notify-clear':
+      notifications.length = 0;
+      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), hasVault: !!config.vaultPath }));
+      break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }
 }

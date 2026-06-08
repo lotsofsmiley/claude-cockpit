@@ -177,7 +177,8 @@ function renderRail() {
     const hdr = buildIslandHeader(isl, members.length);
     group.appendChild(hdr);
     if (renameIslandId === isl.id) { startRenameIsland(hdr, isl); renameIslandId = null; }
-    if (!isl.collapsed) members.forEach((s) => group.appendChild(buildTab(s)));
+    const collapsed = isl.collapsed && appEl.classList.contains('layout-left'); // collapse only in the vertical rail
+    if (!collapsed) members.forEach((s) => group.appendChild(buildTab(s)));
     tabsEl.appendChild(group);
   }
   ungrouped.forEach((s) => tabsEl.appendChild(buildTab(s)));
@@ -339,6 +340,7 @@ function openDash(on) {
 document.getElementById('btnDash').innerHTML = ICONS.inbox;
 document.getElementById('btnDash').onclick = () => openDash(!dashOpen);
 document.getElementById('dashClose').onclick = () => openDash(false);
+document.getElementById('inboxClear').onclick = () => send({ type: 'notify-clear' });
 
 /* ---- session-type manager (user-editable openers) ---- */
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }

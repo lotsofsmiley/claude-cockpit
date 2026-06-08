@@ -44,7 +44,8 @@
     #searchBtn .s-ico svg { width: 14px; height: 14px; display: block; }
     #searchBtn .s-label { flex: 1; text-align: left; }
     #searchBtn kbd { font-size: 10px; color: var(--muted); border: 1px solid #2a3340; border-radius: 4px; padding: 1px 5px; }
-    .layout-left #searchBtn { margin-top: auto; width: 100%; box-sizing: border-box; }
+    .layout-left #searchBtn { width: 100%; box-sizing: border-box; }
+    .layout-left #tabs { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
     .layout-top #searchBtn { margin-left: auto; }
     .layout-top #searchBtn .s-label, .layout-top #searchBtn kbd { display: none; }
 
@@ -104,6 +105,7 @@
     .layout-left .island-group { flex-direction: column; }
     .layout-top .island-group { flex-direction: row; align-items: center; }
     .layout-top .island-hdr .icount { margin-left: 4px; }
+    .layout-top .island-hdr .caret { display: none; }
     .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab .x { margin-left: auto; opacity: 0; width: 16px; height: 16px; line-height: 14px;
       text-align: center; border-radius: 4px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }
@@ -202,7 +204,7 @@
       <div id="term"></div>
       <div id="dash" class="hidden">
         <div class="dash-head"><span>Dashboard</span><span id="dashClose">✕</span></div>
-        <div class="dash-sec"><h3>Claude → you</h3><div id="dashInbox"></div></div>
+        <div class="dash-sec"><h3>Claude → you <span id="inboxClear" class="dash-link">· clear</span></h3><div id="dashInbox"></div></div>
         <div class="dash-sec"><h3>Open handoffs</h3><div id="dashHandoffs"></div></div>
       </div>
       <div id="status">connecting…</div>
