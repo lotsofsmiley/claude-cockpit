@@ -29,7 +29,7 @@ async function ensureDaemon() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100, height: 720, backgroundColor: '#0b0d10', title: 'claudpit',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
+    icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: false,
@@ -52,6 +52,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // remove the File/Edit/View/Window bar — reclaim the space
+  app.setAppUserModelId('com.lotsofsmiley.claudpit'); // distinct Windows taskbar identity
   await ensureDaemon();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

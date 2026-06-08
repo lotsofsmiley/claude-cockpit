@@ -19,7 +19,7 @@ const { exec } = require('child_process');
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
-const VERSION = '0.0.1';
+const VERSION = (() => { try { return require('../package.json').version; } catch { return '0.0.0'; } })();
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.COCLAUDE_PORT) || 4317;
 const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
