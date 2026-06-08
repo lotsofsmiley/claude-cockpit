@@ -84,6 +84,12 @@ function stateColor(s) {
     default:        return s.color || (s.alive ? '#3fb950' : '#f85149');
   }
 }
+function fade(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
 function notifyWaiting(s) {
   if (!notifyOn) return;
   try { new Notification('claudpit', { body: `${s.name || 'session'} is waiting on you`, silent: true }); } catch (_) { /* ignore */ }
@@ -159,7 +165,7 @@ function renderRail() {
     const members = byIsland.get(isl.id) || [];
     const group = document.createElement('div');
     group.className = 'island-group';
-    if (isl.color) group.style.borderColor = isl.color;
+    if (isl.color) { group.style.borderColor = fade(isl.color, 0.3); group.style.background = fade(isl.color, 0.05); }
     const hdr = buildIslandHeader(isl, members.length);
     group.appendChild(hdr);
     if (renameIslandId === isl.id) { startRenameIsland(hdr, isl); renameIslandId = null; }
