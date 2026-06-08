@@ -66,8 +66,7 @@
     "publish": {
       "provider": "github",
       "owner": "lotsofsmiley",
-      "repo": "claude-cockpit",
-      "releaseType": "release"
+      "repo": "claude-cockpit"
     }
   }
 }
