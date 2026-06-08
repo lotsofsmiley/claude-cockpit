@@ -30,6 +30,8 @@ const HOOK_SCRIPT_FILE = path.join(STATE_DIR, 'hook.ps1');
 const ISLANDS_FILE = path.join(STATE_DIR, 'islands.json');
 const MCP_CONFIG_FILE = path.join(STATE_DIR, 'mcp.json');
 const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
+const VAULT_DIR = process.env.COCLAUDE_VAULT || 'C:\\add\\vaults\\ADD-Vault';
+const HANDOFFS_DIR = path.join(VAULT_DIR, '99-Meta', 'Handoffs');
 const STATE_BY_EVENT = {
   SessionStart: 'running', UserPromptSubmit: 'running',
   PreToolUse: 'running', PostToolUse: 'running',
@@ -50,6 +52,7 @@ const sessions = new Map();
 /** @type {Map<string, any>} island registry: id -> {id,name,color,collapsed,order} */
 const islands = new Map();
 try { JSON.parse(fs.readFileSync(ISLANDS_FILE, 'utf8')).forEach((i) => islands.set(i.id, i)); } catch { /* none yet */ }
+const notifications = []; // Claude -> Filipe inbox (last 50)
 /** connected clients: { ws, attached:Set<id>, authed:boolean } */
 const clients = new Set();
 
@@ -117,6 +120,27 @@ function stateMsg() {
 function broadcastSessions() {
   const msg = stateMsg();
   for (const c of clients) if (c.authed) safeSend(c.ws, msg);
+}
+
+// Read the vault's open handoffs (title + priority) for the dashboard.
+function readHandoffs() {
+  const rank = { high: 0, medium: 1, low: 2 };
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(HANDOFFS_DIR)) {
+      if (!f.endsWith('.md')) continue;
+      let title = f.replace(/\.md$/, ''), priority = null;
+      try {
+        const txt = fs.readFileSync(path.join(HANDOFFS_DIR, f), 'utf8').slice(0, 4000);
+        const h = txt.match(/^#\s+(.+)$/m); if (h) title = h[1].trim();
+        const p = txt.match(/\[P:(high|medium|low)\]/i) || txt.match(/priority:\s*(high|medium|low)/i);
+        if (p) priority = p[1].toLowerCase();
+      } catch { /* ignore one file */ }
+      out.push({ file: f, title, priority });
+    }
+  } catch { /* no handoffs dir */ }
+  out.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3));
+  return out;
 }
 
 function appendBuffer(s, data) {
@@ -241,10 +265,15 @@ function handle(client, m) {
       break;
     }
     case 'notify': {
-      const note = { type: 'notify', message: String(m.message || ''), level: m.level || 'info', sessionId: m.sessionId || null, at: iso() };
-      for (const c of clients) if (c.authed) safeSend(c.ws, JSON.stringify(note));
+      const note = { message: String(m.message || ''), level: m.level || 'info', sessionId: m.sessionId || null, at: iso() };
+      notifications.push(note); if (notifications.length > 50) notifications.shift();
+      const out = JSON.stringify({ type: 'notify', ...note });
+      for (const c of clients) if (c.authed) safeSend(c.ws, out);
       break;
     }
+    case 'dashboard':
+      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs() }));
+      break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }
 }

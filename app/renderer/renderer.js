@@ -18,6 +18,7 @@ const ICONS = {
   bellOff: SVG('<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.9 5.9 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="2" y1="2" x2="22" y2="22"/>'),
   sidebar: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>'),
   panelTop: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>'),
+  inbox: SVG('<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'),
 };
 
 const daemon = window.cockpit && window.cockpit.daemon;
@@ -67,6 +68,7 @@ let daemonLabel = '';
 let islandList = [];                 // [{id,name,color,collapsed,order}]
 let notifyOn = localStorage.getItem('coclaude.notify') === '1'; // desktop notifications: off by default
 let fitTimer = null;
+let dashOpen = false;
 let renameIslandId = null;           // island to inline-rename on next render (just created)
 const sessions = new Map();
 const prevState = new Map();
@@ -304,6 +306,27 @@ function setNotify(on) {
 document.getElementById('btnNotify').onclick = () => setNotify(!notifyOn);
 setNotify(notifyOn);
 
+/* ---- dashboard ---- */
+function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function renderDash(data) {
+  const notes = (data.notifications || []).slice().reverse();
+  document.getElementById('dashInbox').innerHTML = notes.length
+    ? notes.map((n) => `<div class="dash-item"><div style="flex:1"><div class="dash-msg">${esc(n.message)}</div><div class="dash-meta">${n.at ? n.at.slice(11, 16) : ''} · ${esc(n.level || '')}</div></div></div>`).join('')
+    : '<div class="dash-empty">No messages yet.</div>';
+  const hs = data.handoffs || [];
+  document.getElementById('dashHandoffs').innerHTML = hs.length
+    ? hs.map((h) => `<div class="dash-item"><span class="pri pri-${h.priority || 'none'}"></span><span class="dash-msg">${esc(h.title)}</span></div>`).join('')
+    : '<div class="dash-empty">No open handoffs.</div>';
+}
+function openDash(on) {
+  dashOpen = on;
+  document.getElementById('dash').classList.toggle('hidden', !on);
+  if (on) send({ type: 'dashboard' });
+}
+document.getElementById('btnDash').innerHTML = ICONS.inbox;
+document.getElementById('btnDash').onclick = () => openDash(!dashOpen);
+document.getElementById('dashClose').onclick = () => openDash(false);
+
 /* ---- connection ---- */
 function connect() {
   if (!daemon) { statusEl.textContent = 'no daemon.json — is the daemon running?'; return; }
@@ -352,7 +375,8 @@ function connect() {
       case 'attached': if (m.id === activeId) term.write(m.buffer || ''); break;
       case 'data':     if (m.id === activeId) term.write(m.data); break;
       case 'exit':     if (m.id === activeId) term.writeln(`\r\n\x1b[31m[session exited: ${m.exitCode}]\x1b[0m`); break;
-      case 'notify':   if (notifyOn) { try { new Notification('claudpit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } break;
+      case 'notify':   if (notifyOn) { try { new Notification('claudpit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } if (dashOpen) send({ type: 'dashboard' }); break;
+      case 'dashboard-data': renderDash(m); break;
     }
   };
 }
