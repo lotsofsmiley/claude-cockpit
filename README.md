@@ -49,6 +49,17 @@ npm run test:operator  # MCP operator tools
 
 Requires Node and Claude Code on `PATH`. PowerShell 7 recommended (falls back to Windows PowerShell).
 
+## Build a desktop app
+
+```powershell
+npm run dist   # -> dist/claudpit Setup <ver>.exe (installer) + dist/claudpit <ver>.exe (portable)
+npm run pack   # quick unpacked build in dist/win-unpacked (no installer)
+```
+
+No Visual Studio needed — node-pty is N-API, so it's not recompiled. The build is unsigned, so
+Windows SmartScreen warns on first run ("More info → Run anyway"). Bump the version with
+`npm version patch|minor|major`, then `npm run dist`.
+
 ## Status
 
 Working: sessions, live survival, islands, activity state, operator MCP, comms dashboard.
