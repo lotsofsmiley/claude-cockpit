@@ -62,12 +62,22 @@ function createWindow() {
   });
 }
 
+// Release notes from the provider may be a string or an array of {version, note}.
+function notesToText(n) {
+  if (!n) return '';
+  if (typeof n === 'string') return n;
+  if (Array.isArray(n)) return n.map((x) => (x && x.note) ? x.note : '').filter(Boolean).join('\n\n');
+  return '';
+}
+
 // Auto-update from GitHub Releases. quitAndInstall restarts only the GUI; the daemon is
 // detached + holds every PTY, so updating keeps all sessions running. New GUI re-attaches.
 function setupUpdates() {
   if (!app.isPackaged) return; // updates only in the installed build
   autoUpdater.autoDownload = false;
-  autoUpdater.on('update-available', (info) => { if (win) win.webContents.send('update-available', info.version); });
+  autoUpdater.on('update-available', (info) => {
+    if (win) win.webContents.send('update-available', { version: info.version, notes: notesToText(info.releaseNotes) });
+  });
   autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(false, true));
   autoUpdater.on('error', () => { /* ignore (e.g. no releases yet / offline) */ });
   ipcMain.on('install-update', () => { autoUpdater.downloadUpdate().catch(() => {}); });

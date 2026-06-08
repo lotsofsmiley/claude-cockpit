@@ -10,9 +10,14 @@ All notable changes to **claudpit** are recorded here. Versions follow semver-is
   session (shell, args, cwd, name, color, island, and the Claude session id) and, on a cold
   boot, re-spawns every session that was alive: shells return at their original folder and
   Claude tabs resume their conversation via `claude --resume <id>`.
-- **Auto-update** (installed builds only). When a new version is published, a banner shows
-  the version with an **Update & restart** button. Because the daemon is detached and owns
-  every PTY, the GUI updates and relaunches while all sessions keep running — no work lost.
+- **Auto-update** (installed builds only). When a new version is published, a **centered
+  modal** (dim backdrop, like the command palette) shows the version and its changes with an
+  **Update & restart** button. Because the daemon is detached and owns every PTY, the GUI
+  updates and relaunches while all sessions keep running — no work lost.
+
+### Fixed
+- **Ctrl+K** now opens the command palette from any focus (it was terminal-focus-only, so it
+  did nothing unless a tab had focus).
 - `COCLAUDE_STATE_DIR` env override for an isolated state dir (multi-profile / testing).
 - `test:restore` — headless proof that sessions survive a SIGKILL'd daemon.
 

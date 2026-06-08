@@ -515,18 +515,45 @@ document.getElementById('palInput').onkeydown = (e) => {
 };
 document.getElementById('palette').addEventListener('mousedown', (e) => { if (e.target.id === 'palette') closePalette(); });
 
-/* ---- auto-update banner ---- */
-if (window.cockpit && window.cockpit.onUpdateAvailable) {
-  window.cockpit.onUpdateAvailable((v) => {
-    document.getElementById('updateMsg').textContent = `claudpit ${v} is ready`;
+/* ---- auto-update (centered modal, same dim-backdrop concept as the palette) ---- */
+let pendingUpdate = null;
+function renderNotes(text, el) {
+  el.innerHTML = '';
+  let any = false;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    any = true;
+    if (/^#{1,6}\s/.test(line)) { const h = document.createElement('h4'); h.textContent = line.replace(/^#{1,6}\s/, ''); el.appendChild(h); }
+    else if (/^[-*]\s/.test(line)) { const d = document.createElement('div'); d.className = 'um-li'; d.textContent = line.replace(/^[-*]\s+/, ''); el.appendChild(d); }
+    else { const p = document.createElement('p'); p.textContent = line; el.appendChild(p); }
+  }
+  if (!any) { const p = document.createElement('p'); p.textContent = 'A new version is ready to install.'; el.appendChild(p); }
+}
+function openUpdateModal() {
+  if (!pendingUpdate) return;
+  document.getElementById('umTitle').textContent = `claudpit ${pendingUpdate.version} is ready`;
+  renderNotes(pendingUpdate.notes, document.getElementById('umNotes'));
+  const go = document.getElementById('umGo'); go.disabled = false; go.textContent = 'Update & restart';
+  document.getElementById('updateBar').classList.add('hidden');
+  document.getElementById('updateModal').classList.remove('hidden');
+}
+function dismissUpdateModal() {
+  document.getElementById('updateModal').classList.add('hidden');
+  if (pendingUpdate) {
+    document.getElementById('updateMsg').textContent = `↑ claudpit ${pendingUpdate.version} ready`;
     document.getElementById('updateBar').classList.remove('hidden');
-  });
-  document.getElementById('updateBtn').onclick = () => {
-    document.getElementById('updateMsg').textContent = 'Downloading update…';
-    document.getElementById('updateBtn').disabled = true;
+  }
+}
+if (window.cockpit && window.cockpit.onUpdateAvailable) {
+  window.cockpit.onUpdateAvailable((u) => { pendingUpdate = (typeof u === 'string') ? { version: u, notes: '' } : u; openUpdateModal(); });
+  document.getElementById('umGo').onclick = () => {
+    const b = document.getElementById('umGo'); b.disabled = true; b.textContent = 'Downloading…';
     window.cockpit.installUpdate();
   };
-  document.getElementById('updateDismiss').onclick = () => document.getElementById('updateBar').classList.add('hidden');
+  document.getElementById('umLater').onclick = dismissUpdateModal;
+  document.getElementById('updateBar').onclick = openUpdateModal;
+  document.getElementById('updateModal').addEventListener('mousedown', (e) => { if (e.target.id === 'updateModal') dismissUpdateModal(); });
 }
 
 /* ---- connection ---- */
