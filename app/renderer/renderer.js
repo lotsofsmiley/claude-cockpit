@@ -321,16 +321,22 @@ function renderDash(data) {
   document.getElementById('dashInbox').innerHTML = notes.length
     ? notes.map((n) => `<div class="dash-item"><div style="flex:1"><div class="dash-msg">${esc(n.message)}</div><div class="dash-meta">${n.at ? n.at.slice(11, 16) : ''} · ${esc(n.level || '')}</div></div></div>`).join('')
     : '<div class="dash-empty">No messages yet.</div>';
-  const hs = data.handoffs || [];
   const ho = document.getElementById('dashHandoffs');
+  const pr = document.getElementById('dashProjects');
   if (!data.hasVault) {
     ho.innerHTML = '<div class="dash-cta">No vault connected. claudpit can read an Obsidian-style <b>second brain</b> — a folder of markdown notes — and surface what needs you. Point it at a vault and let Claude work from it.<br><span id="setVault" class="dash-link">Set vault folder…</span></div>';
     const sv = document.getElementById('setVault'); if (sv) sv.onclick = promptVault;
-  } else {
-    ho.innerHTML = hs.length
-      ? hs.map((h) => `<div class="dash-item"><span class="pri pri-${h.priority || 'none'}"></span><span class="dash-msg">${esc(h.title)}</span></div>`).join('')
-      : '<div class="dash-empty">No open handoffs.</div>';
+    pr.innerHTML = '';
+    return;
   }
+  const hs = data.handoffs || [];
+  ho.innerHTML = hs.length
+    ? hs.map((h) => `<div class="dash-item dash-click" data-handoff="${esc(h.file)}" title="Open in a Claude session"><span class="pri pri-${h.priority || 'none'}"></span><span class="dash-msg">${esc(h.title)}</span></div>`).join('')
+    : '<div class="dash-empty">No open handoffs.</div>';
+  const ps = data.projects || [];
+  pr.innerHTML = ps.length
+    ? ps.map((p) => `<div class="dash-item dash-click" data-project="${esc(p.name)}" title="Open in a Claude session"><span class="pri pri-${p.priority || 'none'}"></span><span class="dash-msg">${esc(p.name)}</span>${p.todos ? `<span class="dash-meta" style="margin:0">${p.todos}</span>` : ''}</div>`).join('')
+    : '<div class="dash-empty">No active projects.</div>';
 }
 function openDash(on) {
   dashOpen = on;
@@ -341,6 +347,19 @@ document.getElementById('btnDash').innerHTML = ICONS.inbox;
 document.getElementById('btnDash').onclick = () => openDash(!dashOpen);
 document.getElementById('dashClose').onclick = () => openDash(false);
 document.getElementById('inboxClear').onclick = () => send({ type: 'notify-clear' });
+function openVaultThing(name, color, prompt) {
+  if (!vaultPath) return;
+  openDash(false);
+  spawnTemplate({ claude: true, cwd: vaultPath, name, color, prompt });
+}
+document.getElementById('dashHandoffs').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-handoff]'); if (!el) return;
+  openVaultThing('handoff', '#e3b341', `Open the handoff 99-Meta/Handoffs/${el.dataset.handoff}, brief me on it, and help me action it.`);
+});
+document.getElementById('dashProjects').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-project]'); if (!el) return;
+  openVaultThing(el.dataset.project, '#7aa2f7', `Open the project 01-Projects/${el.dataset.project}/, give me a short status, and help me with it.`);
+});
 
 /* ---- session-type manager (user-editable openers) ---- */
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
@@ -523,7 +542,7 @@ function connect() {
         sessions.set(m.id, m.meta);
         activeId = m.id; term.clear(); renderRail(); doFit(); term.focus();
         const run = t && (t.claude
-          ? `claude${t.resume ? ' --resume' : ''}${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}\r\n`
+          ? `claude${t.resume ? ' --resume' : ''}${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}${t.prompt ? ' ' + JSON.stringify(t.prompt) : ''}\r\n`
           : t.run);
         if (run) setTimeout(() => send({ type: 'input', id: m.id, data: run }), 700);
         break;

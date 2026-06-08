@@ -164,6 +164,28 @@ function readHandoffs() {
   return out;
 }
 
+// Read the vault's active projects (01-Projects/<Name>/<Name>.md) for the dashboard.
+function readProjects() {
+  if (!config.vaultPath) return [];
+  const dir = path.join(config.vaultPath, '01-Projects');
+  const rank = { high: 0, medium: 1, low: 2 };
+  const out = [];
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      let sub; try { sub = path.join(dir, name); if (!fs.statSync(sub).isDirectory()) continue; } catch { continue; }
+      let txt = ''; try { txt = fs.readFileSync(path.join(sub, name + '.md'), 'utf8'); } catch { continue; }
+      const fm = txt.slice(0, 1500);
+      if (/status:\s*(archived|done|complete)/i.test(fm)) continue;
+      const priority = ((fm.match(/priority:\s*(high|medium|low)/i) || [])[1] || '').toLowerCase() || null;
+      const due = (fm.match(/due:\s*([0-9-]+)/i) || [])[1] || null;
+      const todos = (txt.match(/^\s*- \[ \]/gm) || []).length;
+      out.push({ name, priority, due, todos });
+    }
+  } catch { /* no projects dir */ }
+  out.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || (a.due || 'z').localeCompare(b.due || 'z'));
+  return out;
+}
+
 function broadcastMedia(payload) {
   const msg = JSON.stringify({ type: 'media', media: payload });
   for (const c of clients) if (c.authed) safeSend(c.ws, msg);
@@ -322,7 +344,7 @@ function handle(client, m) {
       break;
     }
     case 'dashboard':
-      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), hasVault: !!config.vaultPath }));
+      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), projects: readProjects(), hasVault: !!config.vaultPath }));
       break;
     case 'config':
       safeSend(ws, JSON.stringify({ type: 'config-data', templates: config.templates || [], vaultPath: config.vaultPath || null }));
@@ -338,7 +360,7 @@ function handle(client, m) {
       break;
     case 'notify-clear':
       notifications.length = 0;
-      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), hasVault: !!config.vaultPath }));
+      safeSend(ws, JSON.stringify({ type: 'dashboard-data', notifications, handoffs: readHandoffs(), projects: readProjects(), hasVault: !!config.vaultPath }));
       break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }
