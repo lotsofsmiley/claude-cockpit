@@ -1,7 +1,7 @@
 'use strict';
 /* Electron main process. Ships NO native modules — it only ensures the daemon is
  * up and loads the renderer, which talks to the daemon over WebSocket. */
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -59,15 +59,50 @@ ipcMain.on('restart-engine', async () => {
   await ensureDaemon(); // restore re-spawns sessions; the renderer's WS auto-reconnects
 });
 
+// Remember the window's size/position across launches (default: ~80% of the work area).
+const WINDOW_FILE = path.join(STATE_DIR, 'window.json');
+function saveBounds() {
+  if (!win || win.isDestroyed()) return;
+  try {
+    const b = win.getNormalBounds ? win.getNormalBounds() : win.getBounds(); // un-maximized size
+    fs.writeFileSync(WINDOW_FILE, JSON.stringify({ ...b, maximized: win.isMaximized() }));
+  } catch { /* ignore */ }
+}
+function initialBounds() {
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(WINDOW_FILE, 'utf8')); } catch { /* none */ }
+  if (saved && saved.width > 300 && saved.height > 200) {
+    const onScreen = screen.getAllDisplays().some((d) => {
+      const a = d.workArea;
+      return saved.x != null && saved.y != null &&
+        saved.x < a.x + a.width - 60 && saved.x + saved.width > a.x + 60 &&
+        saved.y < a.y + a.height - 40 && saved.y + saved.height > a.y + 20;
+    });
+    return { width: saved.width, height: saved.height, x: onScreen ? saved.x : undefined, y: onScreen ? saved.y : undefined, maximized: !!saved.maximized };
+  }
+  const area = screen.getPrimaryDisplay().workAreaSize;
+  return { width: Math.round(area.width * 0.8), height: Math.round(area.height * 0.82) };
+}
+
 function createWindow() {
+  const b = initialBounds();
   win = new BrowserWindow({
-    width: 1100, height: 720, backgroundColor: '#0b0d10', title: 'claudpit',
+    width: b.width, height: b.height,
+    ...(b.x != null ? { x: b.x, y: b.y } : {}),
+    minWidth: 640, minHeight: 420,
+    backgroundColor: '#0b0d10', title: 'claudpit',
     icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: false,
     },
   });
+  if (b.maximized) win.maximize();
+  let saveTimer = null;
+  const scheduleSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveBounds, 500); };
+  win.on('resize', scheduleSave);
+  win.on('move', scheduleSave);
+  win.on('close', saveBounds);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // The menu bar is removed, so keep two dev accelerators that don't clash with

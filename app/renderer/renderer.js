@@ -30,7 +30,7 @@ const newMenu = document.getElementById('newMenu');
 const tabMenu = document.getElementById('tabMenu');
 
 const term = new Terminal({
-  fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize: 13,
+  fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize: 14,
   cursorBlink: true, scrollback: 50000, rightClickSelectsWord: true,
   theme: { background: '#0b0d10', foreground: '#cdd6e4' },
 });
@@ -40,8 +40,8 @@ term.open(document.getElementById('term'));
 fit.fit();
 // Keep keystrokes landing in the active session: clicking the terminal area or
 // re-focusing the window always returns focus to xterm's input.
-document.getElementById('main').addEventListener('mousedown', () => setTimeout(() => term.focus(), 0));
-window.addEventListener('focus', () => term.focus());
+document.getElementById('main').addEventListener('mousedown', () => setTimeout(() => { if (!renamingActive) term.focus(); }, 0));
+window.addEventListener('focus', () => { if (!renamingActive) term.focus(); });
 
 // No menu bar, so wire clipboard + font-zoom here. Non-Ctrl keys pass straight
 // through to the shell (typing is never intercepted).
@@ -59,7 +59,7 @@ term.attachCustomKeyEventHandler((e) => {
   // Ctrl+K is handled at the document level (capture) so it works from any focus — see below.
   if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
   if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
-  if (k === '0') { setFont(13); e.preventDefault(); return false; }
+  if (k === '0') { setFont(14); e.preventDefault(); return false; }
   return true;
 });
 
@@ -77,7 +77,11 @@ let renameIslandId = null;           // island to inline-rename on next render (
 const sessions = new Map();
 const prevState = new Map();
 const attention = new Set(); // tabs that finished work while not focused
+const everSeen = new Set();  // tabs you've actually opened — only these can raise an attention badge
+const quietTimers = new Map(); // id -> timer: confirm a session is *really* done before flagging (not a mid-stream pause)
 const pendingSpawns = [];
+let renamingActive = false;  // an inline rename is open — don't let a rail re-render or focus-steal clobber it
+let railDirty = false;       // a rail re-render was deferred during a rename
 
 const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const firstId = () => (sessions.size ? [...sessions.keys()][0] : null);
@@ -159,6 +163,7 @@ function buildIslandHeader(isl, count) {
 }
 
 function renderRail() {
+  if (renamingActive) { railDirty = true; return; } // don't wipe an open rename input; redraw when it closes
   tabsEl.innerHTML = '';
   const byIsland = new Map();
   const ungrouped = [];
@@ -188,27 +193,34 @@ function renderRail() {
 /* ---- actions ---- */
 function attach(id) {
   if (id === activeId || !sessions.has(id)) return;
-  activeId = id; attention.delete(id); term.clear();
+  activeId = id; attention.delete(id); everSeen.add(id); term.clear();
+  const qt = quietTimers.get(id); if (qt) { clearTimeout(qt); quietTimers.delete(id); }
   send({ type: 'attach', id });
+  // match this pty to the current window size, so switching tabs never shows a stale layout
+  send({ type: 'resize', id, cols: term.cols, rows: term.rows });
   renderRail();
   term.focus(); // a tab click must leave you ready to type immediately
 }
 function inlineRename(hostEl, oldEl, current, onSave) {
   const input = document.createElement('input');
   input.className = 'rename'; input.value = current || '';
+  renamingActive = true;
   const done = (save) => {
-    if (input.parentNode !== hostEl) return;
+    if (input.parentNode !== hostEl) { renamingActive = false; return; }
     const v = input.value.trim();
     hostEl.replaceChild(oldEl, input);
+    renamingActive = false;
     if (save && v && v !== current) onSave(v);
+    if (railDirty) { railDirty = false; renderRail(); } // apply any updates that arrived during the rename
   };
   input.onclick = (e) => e.stopPropagation();
-  input.onkeydown = (e) => { if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false); };
+  input.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false); };
   input.onblur = () => done(true);
   hostEl.replaceChild(input, oldEl);
   input.focus(); input.select();
 }
 function startRenameTab(tabEl, s) {
+  attention.delete(s.id); tabEl.classList.remove('attention'); // interacting with it = seen; drop the badge/outline
   inlineRename(tabEl, tabEl.querySelector('.name'), s.name, (v) => send({ type: 'rename', id: s.id, name: v }));
 }
 function startRenameIsland(hdrEl, isl) {
@@ -356,11 +368,14 @@ document.getElementById('inboxClear').onclick = () => send({ type: 'notify-clear
 function openVaultThing(name, color, prompt) {
   if (!vaultPath) return;
   openDash(false);
+  // dedupe: if a session for this thing is already open, just focus it instead of spawning another
+  for (const s of sessions.values()) { if ((s.name || '') === name) { attach(s.id); return; } }
   spawnTemplate({ claude: true, cwd: vaultPath, name, color, prompt });
 }
 document.getElementById('dashHandoffs').addEventListener('click', (e) => {
   const el = e.target.closest('[data-handoff]'); if (!el) return;
-  openVaultThing('handoff', '#e3b341', `Open the handoff 99-Meta/Handoffs/${el.dataset.handoff}, brief me on it, and help me action it.`);
+  const nm = el.dataset.handoff.replace(/\.md$/, ''); // per-handoff name so dedupe is per-file
+  openVaultThing(nm, '#e3b341', `Open the handoff 99-Meta/Handoffs/${el.dataset.handoff}, brief me on it, and help me action it.`);
 });
 document.getElementById('dashProjects').addEventListener('click', (e) => {
   const el = e.target.closest('[data-project]'); if (!el) return;
@@ -519,9 +534,29 @@ document.getElementById('palette').addEventListener('mousedown', (e) => { if (e.
 let pendingUpdate = null;
 function renderNotes(text, el) {
   el.innerHTML = '';
+  const raw = String(text || '');
+  // GitHub returns release notes as HTML; render a clean text-only subset (headings/bullets/paras),
+  // never raw markup. Other providers may send markdown — handled by the line parser below.
+  if (/<(p|h[1-6]|ul|ol|li|br|div|strong|em)\b/i.test(raw)) {
+    const body = new DOMParser().parseFromString(raw, 'text/html').body;
+    const emit = (node) => {
+      node.childNodes.forEach((c) => {
+        if (c.nodeType === 3) { const t = c.textContent.trim(); if (t) { const p = document.createElement('p'); p.textContent = t; el.appendChild(p); } return; }
+        if (c.nodeType !== 1) return;
+        const tag = c.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag)) { const h = document.createElement('h4'); h.textContent = c.textContent.trim(); el.appendChild(h); }
+        else if (tag === 'li') { const d = document.createElement('div'); d.className = 'um-li'; d.textContent = c.textContent.trim(); el.appendChild(d); }
+        else if (tag === 'p') { const t = c.textContent.trim(); if (t) { const p = document.createElement('p'); p.textContent = t; el.appendChild(p); } }
+        else emit(c); // ul/ol/div/etc — descend
+      });
+    };
+    emit(body);
+    if (!el.childNodes.length) { const p = document.createElement('p'); p.textContent = body.textContent.trim() || 'A new version is ready to install.'; el.appendChild(p); }
+    return;
+  }
   let any = false;
-  for (const raw of String(text || '').split(/\r?\n/)) {
-    const line = raw.trim();
+  for (const r of raw.split(/\r?\n/)) {
+    const line = r.trim();
     if (!line) continue;
     any = true;
     if (/^#{1,6}\s/.test(line)) { const h = document.createElement('h4'); h.textContent = line.replace(/^#{1,6}\s/, ''); el.appendChild(h); }
@@ -593,10 +628,24 @@ function connect() {
         islandList = m.islands || [];
         for (const s of sessions.values()) {
           const prev = prevState.get(s.id);
-          if (prev === 'running' && s.state !== 'running' && s.id !== activeId) attention.add(s.id); // finished off-screen
+          if (s.state === 'running') {
+            // new activity — cancel any pending "finished" confirmation (this was just a pause)
+            const t = quietTimers.get(s.id); if (t) { clearTimeout(t); quietTimers.delete(s.id); }
+          } else if (prev === 'running' && s.id !== activeId && everSeen.has(s.id) && !quietTimers.has(s.id)) {
+            // a tab you've opened went quiet off-screen. Only badge it if it STAYS quiet (a real
+            // turn-end, not a mid-stream gap). This avoids the restore-flood + repeated re-flagging.
+            quietTimers.set(s.id, setTimeout(() => {
+              quietTimers.delete(s.id);
+              const cur = sessions.get(s.id);
+              if (cur && cur.state !== 'running' && s.id !== activeId) { attention.add(s.id); renderRail(); }
+            }, 4000));
+          }
           prevState.set(s.id, s.state);
         }
-        for (const id of [...prevState.keys()]) if (!sessions.has(id)) { prevState.delete(id); attention.delete(id); }
+        for (const id of [...prevState.keys()]) if (!sessions.has(id)) {
+          prevState.delete(id); attention.delete(id); everSeen.delete(id);
+          const t = quietTimers.get(id); if (t) { clearTimeout(t); quietTimers.delete(id); }
+        }
         if (!bootstrapped) {
           bootstrapped = true;
           if (sessions.size === 0) spawnTemplate(templates[0] || DEFAULT_TEMPLATE);
@@ -641,7 +690,9 @@ function doFit() {
   clearTimeout(fitTimer);
   fitTimer = setTimeout(() => {
     try { fit.fit(); } catch (_) { /* ignore */ }
-    if (activeId) send({ type: 'resize', id: activeId, cols: term.cols, rows: term.rows });
+    // resize EVERY session, not just the active one — otherwise a background tab keeps the old
+    // cols/rows and renders a stale layout until you resize again while it's focused.
+    for (const id of sessions.keys()) send({ type: 'resize', id, cols: term.cols, rows: term.rows });
   }, 90);
 }
 

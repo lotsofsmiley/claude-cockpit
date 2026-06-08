@@ -2,6 +2,28 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.2
+
+### Fixed
+- **Attention badges** no longer flood on resume/restore or re-fire on a tab you've already seen.
+  A tab earns the yellow `!` only if you've opened it before AND it stays quiet for a few seconds
+  after working (a real turn-end, not a mid-stream pause).
+- **Resizing** the window now resizes every tab's terminal, not just the active one — switching
+  tabs no longer shows a stale layout you'd have to re-resize.
+- **Inline rename** no longer gets cancelled/reset when a session's state changes or a
+  notification arrives (the rail defers its redraw until you finish), and the rename box border
+  is cleaned up (no stray outline).
+- **Dashboard** handoff/project clicks focus an already-open session instead of spawning a
+  duplicate every time.
+- **Update notes** render cleanly (was showing raw HTML tags).
+
+### Changed
+- Larger UI fonts across the terminal, rail, menus, dashboard, and palette (daemon-pid text
+  stays small).
+- The window remembers its last size/position (defaults to ~80% of the screen) instead of
+  reopening at a fixed small box.
+- The resume session type no longer forces a purple tab color.
+
 ## 0.3.1
 
 ### Added

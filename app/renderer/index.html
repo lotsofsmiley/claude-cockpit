@@ -39,7 +39,7 @@
     #media { padding: 8px; background: #0e1116; }
     .layout-left #media { border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; }
     .layout-top #media { border-left: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 10px; }
-    #searchBtn { display: flex; align-items: center; gap: 8px; background: #141a24; border: 1px solid #232b3a; color: var(--muted); border-radius: 6px; padding: 7px 9px; cursor: pointer; font: inherit; font-size: 13px; }
+    #searchBtn { display: flex; align-items: center; gap: 8px; background: #141a24; border: 1px solid #232b3a; color: var(--muted); border-radius: 6px; padding: 7px 9px; cursor: pointer; font: inherit; font-size: 14px; }
     #searchBtn:hover { background: #1b2230; color: var(--txt); }
     #searchBtn .s-ico svg { width: 14px; height: 14px; display: block; }
     #searchBtn .s-label { flex: 1; text-align: left; }
@@ -54,7 +54,7 @@
     #palInput { width: 100%; box-sizing: border-box; background: transparent; border: none; border-bottom: 1px solid #232b3a; color: #cdd6e4; font: inherit; font-size: 15px; padding: 13px 15px; outline: none; }
     #palList { max-height: 52vh; overflow-y: auto; padding: 6px; }
     .pal-group { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #5c6675; padding: 9px 8px 4px; }
-    .pal-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--txt); }
+    .pal-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--txt); }
     .pal-item.sel { background: rgba(31,111,235,.22); }
     .pal-item .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
     .pal-item .pal-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -108,7 +108,7 @@
     .layout-top  #tabs { flex-direction: row; align-items: center; }
     .layout-top .tab, .layout-top .island-group { flex: 0 0 auto; }
 
-    .tab { padding: 6px 8px; border-radius: 6px; background: var(--tab); font-size: 13px;
+    .tab { padding: 6px 8px; border-radius: 6px; background: var(--tab); font-size: 14px;
       cursor: pointer; display: flex; align-items: center; gap: 7px; max-width: 200px; }
     .tab.active { background: rgba(31,111,235,.20); outline: 1px solid rgba(31,111,235,.4); }
     .tab.attention { background: rgba(227,179,65,.14); outline: 1px solid rgba(227,179,65,.55); }
@@ -116,14 +116,15 @@
     .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: 0 0 auto; }
     @keyframes cocPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
     .tab .dot.pulse { animation: cocPulse 1.1s ease-in-out infinite; }
-    .island-hdr { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px;
+    .island-hdr { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 12px;
       letter-spacing: .4px; text-transform: uppercase; color: #8b95a7; cursor: pointer; user-select: none; border-radius: 5px; }
     .island-hdr:hover { background: #141a24; }
     .island-hdr .caret { width: 10px; font-size: 10px; color: #5c6675; flex: 0 0 auto; }
     .island-hdr .idot { width: 8px; height: 8px; border-radius: 50%; background: #5c6675; flex: 0 0 auto; }
     .island-hdr .iname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .island-hdr .icount { margin-left: auto; color: #5c6675; font-size: 10px; }
-    .island-hdr input.rename { background: var(--bg); border: 1px solid var(--accent); color: #fff;
+    .island-hdr input.rename { background: var(--bg); border: 1px solid var(--accent); outline: none;
+      box-shadow: 0 0 0 2px rgba(31,111,235,.22); color: #fff;
       font: inherit; border-radius: 4px; padding: 1px 4px; width: 110px; text-transform: none; }
     .island-group { display: flex; gap: 6px; border: 1px solid #20283a; border-radius: 8px; padding: 6px; }
     .layout-left .island-group { flex-direction: column; }
@@ -135,7 +136,8 @@
       text-align: center; border-radius: 4px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }
     .tab:hover .x { opacity: .7; }
     .tab .x:hover { opacity: 1; background: rgba(248,81,73,.25); color: #fff; }
-    .tab input.rename { background: var(--bg); border: 1px solid var(--accent); color: #fff;
+    .tab input.rename { background: var(--bg); border: 1px solid var(--accent); outline: none;
+      box-shadow: 0 0 0 2px rgba(31,111,235,.22); color: #fff;
       font: inherit; border-radius: 4px; padding: 1px 4px; width: 120px; }
 
     #main { flex: 1; position: relative; min-height: 0; min-width: 0; }
@@ -145,7 +147,7 @@
 
     .menu { position: absolute; z-index: 50; background: #11151c; border: 1px solid #232b3a;
       border-radius: 8px; padding: 4px; min-width: 168px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
-    .menu .item { padding: 7px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; }
+    .menu .item { padding: 7px 10px; border-radius: 5px; font-size: 14px; cursor: pointer; }
     .menu .item:hover { background: #1b2230; }
     .menu .item.danger { color: #f85149; }
     .menu .sep { height: 1px; background: #232b3a; margin: 4px 2px; }
@@ -158,14 +160,14 @@
     #dash { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; background: #0e1116;
       border-left: 1px solid #1c2230; z-index: 40; overflow-y: auto; padding: 10px; }
     #dash .dash-head { display: flex; justify-content: space-between; align-items: center;
-      color: #7aa2f7; font-size: 13px; margin-bottom: 12px; }
+      color: #7aa2f7; font-size: 14px; margin-bottom: 12px; }
     #dash #dashClose { cursor: pointer; color: #5c6675; }
     #dash #dashClose:hover { color: #fff; }
     #dash .dash-sec { margin-bottom: 16px; }
     #dash .dash-sec h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
       color: #5c6675; margin: 0 0 7px; }
     #dash .dash-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 9px;
-      background: #141a24; border-radius: 6px; margin-bottom: 5px; font-size: 13px; }
+      background: #141a24; border-radius: 6px; margin-bottom: 5px; font-size: 14px; }
     #dash .dash-msg { flex: 1; overflow-wrap: anywhere; }
     #dash .dash-meta { color: #5c6675; font-size: 11px; margin-top: 3px; }
     #dash .dash-empty { color: #5c6675; font-size: 12px; font-style: italic; }
