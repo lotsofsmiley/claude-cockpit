@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const http = require('http');
+const { exec } = require('child_process');
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
 
@@ -62,6 +63,10 @@ const meta = (s) => ({
 });
 
 function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data); } catch { /* ignore */ } }
+
+// Kill a pty's whole process tree (shell -> claude -> claude's MCP servers). node-pty's
+// kill leaves grandchildren orphaned on Windows, which is how claude/node processes pile up.
+function killTree(pid) { if (pid) { try { exec(`taskkill /F /T /PID ${pid}`); } catch { /* ignore */ } } }
 
 function persistSessions() {
   try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...sessions.values()].map(meta), null, 2)); } catch { /* ignore */ }
@@ -189,7 +194,11 @@ function handle(client, m) {
     }
     case 'kill': {
       const s = sessions.get(m.id);
-      if (s) { if (s.pty) { try { s.pty.kill(); } catch { /* ignore */ } } sessions.delete(m.id); broadcastSessions(); persistSessions(); }
+      if (s) {
+        killTree(s.pty && s.pty.pid);
+        if (s.pty) { try { s.pty.kill(); } catch { /* ignore */ } }
+        sessions.delete(m.id); broadcastSessions(); persistSessions();
+      }
       break;
     }
     case 'island-create': {

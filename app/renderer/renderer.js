@@ -41,7 +41,6 @@ function setFont(px) {
   term.options.fontSize = Math.max(8, Math.min(30, px));
   if (webgl) { try { webgl.clearTextureAtlas(); } catch (_) { /* ignore */ } } // rebuild glyphs at the new size
   doFit();
-  try { term.refresh(0, term.rows - 1); } catch (_) { /* ignore */ }
 }
 term.attachCustomKeyEventHandler((e) => {
   if (e.type !== 'keydown' || !e.ctrlKey) return true;
@@ -61,6 +60,7 @@ let bootstrapped = false;
 let daemonLabel = '';
 let islandList = [];                 // [{id,name,color,collapsed,order}]
 let notifyOn = localStorage.getItem('coclaude.notify') === '1'; // desktop notifications: off by default
+let fitTimer = null;
 let renameIslandId = null;           // island to inline-rename on next render (just created)
 const sessions = new Map();
 const prevState = new Map();
@@ -331,8 +331,13 @@ function connect() {
 }
 
 function doFit() {
-  fit.fit();
-  if (activeId) send({ type: 'resize', id: activeId, cols: term.cols, rows: term.rows });
+  // debounced: rapid zoom / resize collapses to one pty resize, so a live TUI
+  // (claude) repaints once instead of dumping its banner into scrollback N times.
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => {
+    try { fit.fit(); } catch (_) { /* ignore */ }
+    if (activeId) send({ type: 'resize', id: activeId, cols: term.cols, rows: term.rows });
+  }, 90);
 }
 
 term.onData((d) => { if (activeId) send({ type: 'input', id: activeId, data: d }); });
