@@ -334,7 +334,7 @@ function handle(client, m) {
       safeSend(ws, JSON.stringify({ type: 'config-data', templates: config.templates || [], vaultPath: config.vaultPath || null }));
       break;
     case 'media-control':
-      if (['playpause', 'next', 'prev'].includes(m.action)) { try { fs.writeFileSync(MEDIA_CMD_FILE, m.action); } catch { /* ignore */ } }
+      if (['playpause', 'next', 'prev', 'mute', 'volup', 'voldown'].includes(m.action)) { try { fs.writeFileSync(MEDIA_CMD_FILE, m.action); } catch { /* ignore */ } }
       break;
     default: safeSend(ws, JSON.stringify({ type: 'error', message: 'unknown type ' + m.type }));
   }

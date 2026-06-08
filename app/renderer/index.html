@@ -37,8 +37,28 @@
     #railhead button svg { width: 15px; height: 15px; }
 
     #media { padding: 8px; background: #0e1116; }
-    .layout-left #media { margin-top: auto; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; }
-    .layout-top #media { margin-left: auto; border-left: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 10px; }
+    .layout-left #media { border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; }
+    .layout-top #media { border-left: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 10px; }
+    #searchBtn { display: flex; align-items: center; gap: 8px; background: #141a24; border: 1px solid #232b3a; color: var(--muted); border-radius: 6px; padding: 7px 9px; cursor: pointer; font: inherit; font-size: 13px; }
+    #searchBtn:hover { background: #1b2230; color: var(--txt); }
+    #searchBtn .s-ico svg { width: 14px; height: 14px; display: block; }
+    #searchBtn .s-label { flex: 1; text-align: left; }
+    #searchBtn kbd { font-size: 10px; color: var(--muted); border: 1px solid #2a3340; border-radius: 4px; padding: 1px 5px; }
+    .layout-left #searchBtn { margin-top: auto; width: 100%; box-sizing: border-box; }
+    .layout-top #searchBtn { margin-left: auto; }
+    .layout-top #searchBtn .s-label, .layout-top #searchBtn kbd { display: none; }
+
+    #palette { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 120; display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+    .pal-box { width: 460px; max-width: 92vw; background: #11151c; border: 1px solid #2a3340; border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.6); overflow: hidden; }
+    #palInput { width: 100%; box-sizing: border-box; background: transparent; border: none; border-bottom: 1px solid #232b3a; color: #cdd6e4; font: inherit; font-size: 15px; padding: 13px 15px; outline: none; }
+    #palList { max-height: 52vh; overflow-y: auto; padding: 6px; }
+    .pal-group { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #5c6675; padding: 9px 8px 4px; }
+    .pal-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--txt); }
+    .pal-item.sel { background: rgba(31,111,235,.22); }
+    .pal-item .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+    .pal-item .pal-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pal-item .pal-badge { color: #e3b341; font-weight: 700; }
+    .pal-empty { color: #5c6675; padding: 14px; font-size: 13px; }
     .m-now { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .m-art { width: 36px; height: 36px; border-radius: 5px; overflow: hidden; background: #141a24; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #5c6675; }
     .m-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -109,7 +129,7 @@
     .swatch.none { background: repeating-linear-gradient(45deg,#222,#222 3px,#444 3px,#444 6px); }
     .hidden { display: none !important; }
 
-    #dash { position: absolute; top: 0; right: 0; bottom: 0; width: 340px; background: #0e1116;
+    #dash { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; background: #0e1116;
       border-left: 1px solid #1c2230; z-index: 40; overflow-y: auto; padding: 10px; }
     #dash .dash-head { display: flex; justify-content: space-between; align-items: center;
       color: #7aa2f7; font-size: 13px; margin-bottom: 12px; }
@@ -165,6 +185,7 @@
         </div>
       </div>
       <div id="tabs"></div>
+      <button id="searchBtn"><span class="s-ico"></span><span class="s-label">Search</span><kbd>Ctrl K</kbd></button>
       <div id="media" class="hidden">
         <div class="m-now">
           <span class="m-art"><img id="mediaArt" alt=""><span id="mArtFallback"></span></span>
@@ -172,7 +193,7 @@
         </div>
         <div class="m-row">
           <div class="m-controls"><span id="mPrev" class="m-btn"></span><span id="mPlay" class="m-btn"></span><span id="mNext" class="m-btn"></span></div>
-          <span id="mRemain" class="m-remain"></span>
+          <span id="mVol" class="m-btn" title="Mute · scroll to change volume"></span>
         </div>
         <div class="m-bar"><div id="mFill"></div></div>
       </div>
@@ -195,6 +216,13 @@
     <div class="modal-box">
       <div class="modal-head"><span id="modalTitle">Session types</span><span id="modalClose">✕</span></div>
       <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="palette" class="hidden">
+    <div class="pal-box">
+      <input id="palInput" type="text" placeholder="Search sessions / islands…" autocomplete="off" spellcheck="false">
+      <div id="palList"></div>
     </div>
   </div>
 

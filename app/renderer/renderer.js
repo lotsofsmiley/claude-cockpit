@@ -18,6 +18,8 @@ const ICONS = {
   prev: SVGF('<polygon points="19 20 9 12 19 4"/><rect x="5" y="4" width="2.6" height="16" rx="1"/>'),
   next: SVGF('<polygon points="5 4 15 12 5 20"/><rect x="16.4" y="4" width="2.6" height="16" rx="1"/>'),
   music: SVG('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
+  volume: SVG('<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>'),
+  search: SVG('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
 };
 
 const daemon = window.cockpit && window.cockpit.daemon;
@@ -54,6 +56,7 @@ term.attachCustomKeyEventHandler((e) => {
   if (e.shiftKey && k === 'c') { const s = term.getSelection(); if (s && clip.clipboardWrite) clip.clipboardWrite(s); e.preventDefault(); return false; }
   if (!e.shiftKey && k === 'c' && term.hasSelection()) { if (clip.clipboardWrite) clip.clipboardWrite(term.getSelection()); e.preventDefault(); return false; }
   if (k === 'v') { const t = clip.clipboardRead && clip.clipboardRead(); if (activeId && t) send({ type: 'input', id: activeId, data: t }); e.preventDefault(); return false; }
+  if (k === 'k') { openPalette(); e.preventDefault(); return false; }
   if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
   if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
   if (k === '0') { setFont(13); e.preventDefault(); return false; }
@@ -392,7 +395,6 @@ function updateMediaProgress() {
   if (!media) return;
   const pos = media.position || 0, dur = media.duration || 0;
   document.getElementById('mFill').style.width = (dur > 0 ? Math.min(100, pos / dur * 100) : 0) + '%';
-  document.getElementById('mRemain').textContent = dur > 0 ? '-' + fmtTime(dur - pos) : '';
 }
 function renderMedia() {
   const el = document.getElementById('media');
@@ -408,12 +410,74 @@ function renderMedia() {
 }
 document.getElementById('mPrev').innerHTML = ICONS.prev;
 document.getElementById('mNext').innerHTML = ICONS.next;
+document.getElementById('mVol').innerHTML = ICONS.volume;
 document.getElementById('mArtFallback').innerHTML = ICONS.music;
 document.getElementById('mPrev').onclick = () => send({ type: 'media-control', action: 'prev' });
 document.getElementById('mPlay').onclick = () => send({ type: 'media-control', action: 'playpause' });
 document.getElementById('mNext').onclick = () => send({ type: 'media-control', action: 'next' });
+document.getElementById('mVol').onclick = () => send({ type: 'media-control', action: 'mute' });
+document.getElementById('mVol').onwheel = (e) => { e.preventDefault(); send({ type: 'media-control', action: e.deltaY < 0 ? 'volup' : 'voldown' }); };
 // No local tick — the daemon streams the authoritative position ~every 0.7s (monotonic),
 // so rendering on each update avoids the local-tick-vs-daemon flicker.
+
+/* ---- command palette (Ctrl+K) ---- */
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); // accent-fold: gestão -> gestao
+let palFiltered = [];
+let palSel = 0;
+function markPalSel() {
+  document.querySelectorAll('.pal-item').forEach((el) => el.classList.toggle('sel', +el.dataset.idx === palSel));
+  const s = document.querySelector('.pal-item.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+}
+function choosePalette() { const id = palFiltered[palSel]; if (id) { closePalette(); attach(id); } }
+function renderPalette(q) {
+  const nq = norm(q);
+  const list = document.getElementById('palList');
+  list.innerHTML = ''; palFiltered = [];
+  const ordered = [...islandList].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const byId = {}; ordered.forEach((i) => { byId[i.id] = { island: i, sessions: [] }; });
+  const ung = [];
+  for (const s of sessions.values()) {
+    const isl = (s.island && byId[s.island]) ? byId[s.island].island : null;
+    if (nq && !norm(s.name).includes(nq) && !(isl && norm(isl.name).includes(nq))) continue;
+    if (isl) byId[s.island].sessions.push(s); else ung.push(s);
+  }
+  const addItem = (s) => {
+    const idx = palFiltered.length; palFiltered.push(s.id);
+    const it = document.createElement('div'); it.className = 'pal-item'; it.dataset.idx = idx;
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = stateColor(s);
+    const nm = document.createElement('span'); nm.className = 'pal-name'; nm.textContent = s.name || 'session';
+    it.append(dot, nm);
+    if (attention.has(s.id)) { const b = document.createElement('span'); b.className = 'pal-badge'; b.textContent = '!'; it.appendChild(b); }
+    it.onclick = () => { palSel = idx; choosePalette(); };
+    it.onmousemove = () => { if (palSel !== idx) { palSel = idx; markPalSel(); } };
+    list.appendChild(it);
+  };
+  for (const i of ordered) {
+    const g = byId[i.id];
+    if (!g.sessions.length) continue;
+    const h = document.createElement('div'); h.className = 'pal-group'; h.textContent = i.name || 'island'; list.appendChild(h);
+    g.sessions.forEach(addItem);
+  }
+  ung.forEach(addItem);
+  if (!palFiltered.length) { const e = document.createElement('div'); e.className = 'pal-empty'; e.textContent = 'No matches.'; list.appendChild(e); }
+  if (palSel >= palFiltered.length) palSel = Math.max(0, palFiltered.length - 1);
+  markPalSel();
+}
+function openPalette() {
+  document.getElementById('palette').classList.remove('hidden');
+  const inp = document.getElementById('palInput'); inp.value = ''; palSel = 0; renderPalette(''); inp.focus();
+}
+function closePalette() { document.getElementById('palette').classList.add('hidden'); term.focus(); }
+document.getElementById('searchBtn').querySelector('.s-ico').innerHTML = ICONS.search;
+document.getElementById('searchBtn').onclick = openPalette;
+document.getElementById('palInput').oninput = (e) => renderPalette(e.target.value);
+document.getElementById('palInput').onkeydown = (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palFiltered.length - 1, palSel + 1); markPalSel(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); markPalSel(); }
+  else if (e.key === 'Enter') { e.preventDefault(); choosePalette(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+};
+document.getElementById('palette').addEventListener('mousedown', (e) => { if (e.target.id === 'palette') closePalette(); });
 
 /* ---- connection ---- */
 function connect() {

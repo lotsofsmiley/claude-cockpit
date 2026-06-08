@@ -11,6 +11,8 @@ function Await($op, $t) { $m = $asTaskGeneric.MakeGenericMethod($t); $nt = $m.In
 
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
 [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
+Add-Type -Name VK -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);'
+function Key([byte]$k) { [Win.VK]::keybd_event($k, 0, 0, [UIntPtr]::Zero); [Win.VK]::keybd_event($k, 0, 2, [UIntPtr]::Zero) }
 
 $cmdFile = Join-Path $env:USERPROFILE '.coclaude-pit\media-cmd.txt'
 $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
@@ -29,6 +31,9 @@ while ($true) {
         'playpause' { [void](Await ($s.TryTogglePlayPauseAsync()) ([bool])) }
         'next'      { [void](Await ($s.TrySkipNextAsync()) ([bool])) }
         'prev'      { [void](Await ($s.TrySkipPreviousAsync()) ([bool])) }
+        'mute'      { Key 0xAD }
+        'volup'     { Key 0xAF; Key 0xAF }
+        'voldown'   { Key 0xAE; Key 0xAE }
       }
       Start-Sleep -Milliseconds 120
       $s = $mgr.GetCurrentSession()
