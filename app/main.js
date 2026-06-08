@@ -8,7 +8,10 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 
-const DAEMON_FILE = path.join(os.homedir(), '.coclaude-pit', 'daemon.json');
+// State dir is overridable so a dev/test instance (COCLAUDE_STATE_DIR + COCLAUDE_PORT)
+// runs a fully separate daemon + sessions and never touches the production cockpit.
+const STATE_DIR = process.env.COCLAUDE_STATE_DIR || path.join(os.homedir(), '.coclaude-pit');
+const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 let win = null;
 
 function daemonAlive() {

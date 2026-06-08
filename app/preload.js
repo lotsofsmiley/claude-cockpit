@@ -6,9 +6,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Honor COCLAUDE_STATE_DIR so a dev/test window reads its own isolated daemon.
+const STATE_DIR = process.env.COCLAUDE_STATE_DIR || path.join(os.homedir(), '.coclaude-pit');
+
 function readDaemon() {
   try {
-    return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.coclaude-pit', 'daemon.json'), 'utf8'));
+    return JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'daemon.json'), 'utf8'));
   } catch { return null; }
 }
 

@@ -56,7 +56,7 @@ term.attachCustomKeyEventHandler((e) => {
   if (e.shiftKey && k === 'c') { const s = term.getSelection(); if (s && clip.clipboardWrite) clip.clipboardWrite(s); e.preventDefault(); return false; }
   if (!e.shiftKey && k === 'c' && term.hasSelection()) { if (clip.clipboardWrite) clip.clipboardWrite(term.getSelection()); e.preventDefault(); return false; }
   if (k === 'v') { const t = clip.clipboardRead && clip.clipboardRead(); if (activeId && t) send({ type: 'input', id: activeId, data: t }); e.preventDefault(); return false; }
-  if (k === 'k') { openPalette(); e.preventDefault(); return false; }
+  // Ctrl+K is handled at the document level (capture) so it works from any focus — see below.
   if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
   if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
   if (k === '0') { setFont(13); e.preventDefault(); return false; }
@@ -497,6 +497,15 @@ function openPalette() {
 function closePalette() { document.getElementById('palette').classList.add('hidden'); term.focus(); }
 document.getElementById('searchBtn').querySelector('.s-ico').innerHTML = ICONS.search;
 document.getElementById('searchBtn').onclick = openPalette;
+// Ctrl+K (Cmd+K) toggles the palette from ANY focus. Capture phase + stopPropagation so the
+// key is grabbed before xterm — the terminal never receives a stray ^K, and it works even
+// when focus is on the dashboard, a menu, or no tab is attached.
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault(); e.stopPropagation();
+    if (document.getElementById('palette').classList.contains('hidden')) openPalette(); else closePalette();
+  }
+}, true);
 document.getElementById('palInput').oninput = (e) => renderPalette(e.target.value);
 document.getElementById('palInput').onkeydown = (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palFiltered.length - 1, palSel + 1); markPalSel(); }

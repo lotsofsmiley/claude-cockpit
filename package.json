@@ -10,6 +10,7 @@
   "scripts": {
     "daemon": "node daemon/index.js",
     "start": "electron .",
+    "start:dev": "node scripts/dev.js",
     "test:survive": "node daemon/test-survive.js",
     "test:state": "node daemon/test-state.js",
     "test:islands": "node daemon/test-islands.js",
