@@ -44,6 +44,12 @@
     "electronLanguages": [
       "en-US"
     ],
+    "files": [
+      "!dist/**",
+      "!releases/**",
+      "!scripts/_*.js",
+      "!**/*.log"
+    ],
     "directories": {
       "output": "dist"
     },
