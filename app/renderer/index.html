@@ -37,7 +37,8 @@
 
     #tabs { display: flex; gap: 6px; min-width: 0; }
     .layout-left #tabs { flex-direction: column; }
-    .layout-top  #tabs { flex-direction: row; }
+    .layout-top  #tabs { flex-direction: row; align-items: center; }
+    .layout-top .tab, .layout-top .island-group { flex: 0 0 auto; }
 
     .tab { padding: 6px 8px; border-radius: 6px; background: var(--tab); font-size: 13px;
       cursor: pointer; display: flex; align-items: center; gap: 7px; max-width: 200px; }
