@@ -142,11 +142,13 @@ function spawnSession(opts = {}) {
     id, name: opts.name || 'session', color: opts.color || null,
     cwd, shell, cols, rows, createdAt: iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
-    state: null, stateAt: null, island: opts.island || null,
+    state: null, stateAt: null, lastDataAt: 0, island: opts.island || null,
   };
   sessions.set(id, s);
   p.onData((data) => {
     appendBuffer(s, data);
+    s.lastDataAt = Date.now();
+    if (s.state !== 'running') { s.state = 'running'; s.stateAt = iso(); broadcastSessions(); }
     const msg = JSON.stringify({ type: 'data', id, data });
     for (const c of clients) if (c.attached.has(id)) safeSend(c.ws, msg);
   });
@@ -275,10 +277,9 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 server.listen(PORT, HOST, () => {
-  writeClaudeHooks();
   writeMcpConfig();
   fs.writeFileSync(DAEMON_FILE, JSON.stringify(
-    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), claudeSettings: CLAUDE_HOOKS_FILE, mcpConfig: MCP_CONFIG_FILE }, null, 2));
+    { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
 });
@@ -313,6 +314,17 @@ wss.on('connection', (ws) => {
   ws.on('close', () => { clients.delete(client); });
   ws.on('error', () => {});
 });
+
+// Output-based activity: a running session that stops producing output for ~1.5s goes idle
+// (back to green). Replaces the old per-event hooks, so there are no PowerShell spawns / popups.
+setInterval(() => {
+  const now = Date.now();
+  for (const s of sessions.values()) {
+    if (s.state === 'running' && s.pty && now - (s.lastDataAt || 0) > 1500) {
+      s.state = null; s.stateAt = iso(); broadcastSessions();
+    }
+  }
+}, 500);
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));

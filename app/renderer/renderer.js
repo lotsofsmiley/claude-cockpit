@@ -11,6 +11,14 @@ const TEMPLATES = [
   { label: 'PowerShell · dev',   name: 'dev',          shell: 'powershell.exe', args: ['-NoLogo'], cwd: 'C:\\add\\dev', color: null },
 ];
 const COLORS = ['#3fb950', '#7aa2f7', '#e3b341', '#f85149', '#bc8cff', '#39c5cf', '#ff9e64'];
+const SVG = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICONS = {
+  plus: SVG('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
+  bell: SVG('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
+  bellOff: SVG('<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.9 5.9 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="2" y1="2" x2="22" y2="22"/>'),
+  sidebar: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>'),
+  panelTop: SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>'),
+};
 
 const daemon = window.cockpit && window.cockpit.daemon;
 const statusEl = document.getElementById('status');
@@ -266,12 +274,13 @@ function setLayout(mode) {
   appEl.className = 'layout-' + mode;
   localStorage.setItem('coclaude.layout', mode);
   const b = document.getElementById('btnLayout');
-  if (b) b.textContent = mode === 'left' ? '▌' : '▀';
+  if (b) b.innerHTML = mode === 'left' ? ICONS.sidebar : ICONS.panelTop;
   setTimeout(doFit, 50);
 }
 setLayout(localStorage.getItem('coclaude.layout') || 'left');
 document.getElementById('btnLayout').onclick = () => setLayout(appEl.classList.contains('layout-left') ? 'top' : 'left');
 document.getElementById('btnNew').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); openNewMenu(r.left, r.bottom + 4); };
+document.getElementById('btnNew').innerHTML = ICONS.plus;
 document.getElementById('rail').addEventListener('contextmenu', (e) => {
   if (e.target.closest('.tab') || e.target.closest('.island-hdr')) return; // those have their own menus
   e.preventDefault(); openNewMenu(e.clientX, e.clientY);
@@ -279,7 +288,7 @@ document.getElementById('rail').addEventListener('contextmenu', (e) => {
 function setNotify(on) {
   notifyOn = on; localStorage.setItem('coclaude.notify', on ? '1' : '0');
   const b = document.getElementById('btnNotify');
-  if (b) { b.textContent = on ? '🔔' : '🔕'; b.title = on ? 'Notifications on' : 'Notifications off (click to enable)'; }
+  if (b) { b.innerHTML = on ? ICONS.bell : ICONS.bellOff; b.title = on ? 'Notifications on' : 'Notifications off (click to enable)'; }
 }
 document.getElementById('btnNotify').onclick = () => setNotify(!notifyOn);
 setNotify(notifyOn);

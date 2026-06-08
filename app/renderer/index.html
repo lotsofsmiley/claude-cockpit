@@ -25,10 +25,11 @@
     .layout-left #railhead { justify-content: space-between; }
     #brand { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; }
     #railhead .btns { display: flex; gap: 4px; }
-    #railhead button { background: var(--tab); color: var(--txt); border: 1px solid #232b3a;
-      border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; }
-    #railhead button:hover { background: #1b2230; }
-    #btnNotify { filter: grayscale(1); } /* monochrome bell, matches the other icons */
+    #railhead button { background: var(--tab); color: #aeb6c2; border: 1px solid #232b3a;
+      border-radius: 6px; width: 28px; height: 24px; cursor: pointer; display: inline-flex;
+      align-items: center; justify-content: center; padding: 0; }
+    #railhead button:hover { background: #1b2230; color: #fff; }
+    #railhead button svg { width: 15px; height: 15px; }
 
     #tabs { display: flex; gap: 6px; min-width: 0; }
     .layout-left #tabs { flex-direction: column; }
@@ -84,9 +85,9 @@
       <div id="railhead">
         <span id="brand">claudpit</span>
         <div class="btns">
-          <button id="btnNotify" title="Notifications">🔕</button>
-          <button id="btnLayout" title="Toggle layout (left / top)">▌</button>
-          <button id="btnNew" title="New session (or right-click the rail)">+</button>
+          <button id="btnNotify" title="Notifications"></button>
+          <button id="btnLayout" title="Toggle layout (left / top)"></button>
+          <button id="btnNew" title="New session (or right-click the rail)"></button>
         </div>
       </div>
       <div id="tabs"></div>
