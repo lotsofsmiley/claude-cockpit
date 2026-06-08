@@ -22,7 +22,7 @@ const pty = require('node-pty');
 const VERSION = (() => { try { return require('../package.json').version; } catch { return '0.0.0'; } })();
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.COCLAUDE_PORT) || 4317;
-const STATE_DIR = path.join(os.homedir(), '.coclaude-pit');
+const STATE_DIR = process.env.COCLAUDE_STATE_DIR || path.join(os.homedir(), '.coclaude-pit');
 const DAEMON_FILE = path.join(STATE_DIR, 'daemon.json');
 const SESSIONS_FILE = path.join(STATE_DIR, 'sessions.json');
 const CLAUDE_HOOKS_FILE = path.join(STATE_DIR, 'claude-hooks.json');
@@ -48,6 +48,7 @@ const STATE_BY_EVENT = {
 };
 const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd'];
 const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // ~2 MB of scrollback replayed on re-attach
+const INIT_TYPE_DELAY = 700; // ms to let the shell prompt settle before typing the launch/resume command
 const DEFAULT_SHELL = process.env.COCLAUDE_SHELL || 'powershell.exe';
 const DEFAULT_SHELL_ARGS = process.env.COCLAUDE_SHELL_ARGS
   ? JSON.parse(process.env.COCLAUDE_SHELL_ARGS)
@@ -88,8 +89,19 @@ function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data)
 // kill leaves grandchildren orphaned on Windows, which is how claude/node processes pile up.
 function killTree(pid) { if (pid) { try { exec(`taskkill /F /T /PID ${pid}`); } catch { /* ignore */ } } }
 
+// A self-sufficient record for reboot-restore: everything needed to re-spawn the shell
+// AND resume the Claude conversation, without the GUI being involved.
+function restoreRecord(s) {
+  return {
+    id: s.id, name: s.name, color: s.color, cwd: s.cwd, shell: s.shell, args: s.args,
+    island: s.island ?? null, createdAt: s.createdAt,
+    claude: !!s.claude, claudeId: s.claudeId || null, resume: !!s.resume,
+    prompt: s.prompt || null, run: s.run || null,
+    alive: !!s.pty, lastExit: s.lastExit ?? null,
+  };
+}
 function persistSessions() {
-  try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...sessions.values()].map(meta), null, 2)); } catch { /* ignore */ }
+  try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...sessions.values()].map(restoreRecord), null, 2)); } catch { /* ignore */ }
 }
 
 // A Claude hook command that reports state to this daemon. Guarded by ADD_TERM_TAB_ID
@@ -223,12 +235,29 @@ function appendBuffer(s, data) {
   }
 }
 
+// Build the `claude` command line typed into a fresh shell.
+//   'new'           -> claude --session-id <uuid>   (deterministic id we can resume later)
+//   'resume-id'     -> claude --resume <uuid>       (precise reboot-restore)
+//   'resume-picker' -> claude --resume              (interactive picker; no captured id)
+function claudeCmd(mode, { claudeId, prompt } = {}) {
+  const mcp = fs.existsSync(MCP_CONFIG_FILE) ? ` --mcp-config "${MCP_CONFIG_FILE}"` : '';
+  if (mode === 'resume-id') return `claude --resume ${claudeId}${mcp}\r\n`;
+  if (mode === 'resume-picker') return `claude --resume${mcp}\r\n`;
+  const p = prompt ? ' ' + JSON.stringify(prompt) : '';
+  return `claude --session-id ${claudeId}${mcp}${p}\r\n`;
+}
+
 function spawnSession(opts = {}) {
-  const id = crypto.randomUUID();
+  const id = opts.id || crypto.randomUUID();
   const cwd = opts.cwd && fs.existsSync(opts.cwd) ? opts.cwd : os.homedir();
   const shell = opts.shell || DEFAULT_SHELL;
   const args = opts.args || DEFAULT_SHELL_ARGS;
   const cols = opts.cols || 80, rows = opts.rows || 24;
+  const isClaude = !!opts.claude;
+  // A "resume" template (interactive picker) has no deterministic id; a normal claude
+  // launch gets one we can later resume by id. A restored record carries its own id.
+  const picker = isClaude && !!opts.resume && !opts.claudeId;
+  const claudeId = isClaude && !picker ? (opts.claudeId || crypto.randomUUID()) : null;
   const env = Object.assign({}, process.env, {
     ADD_TERM_TAB_ID: id,
     COCLAUDE_HOOK_URL: `http://${HOST}:${PORT}/hook`,
@@ -236,9 +265,10 @@ function spawnSession(opts = {}) {
   const p = pty.spawn(shell, args, { name: 'xterm-256color', cols, rows, cwd, env });
   const s = {
     id, name: opts.name || 'session', color: opts.color || null,
-    cwd, shell, cols, rows, createdAt: iso(),
+    cwd, shell, args, cols, rows, createdAt: opts.createdAt || iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
     state: null, stateAt: null, lastDataAt: 0, island: opts.island || null,
+    claude: isClaude, claudeId, resume: picker, prompt: opts.prompt || null, run: opts.run || null,
   };
   sessions.set(id, s);
   p.onData((data) => {
@@ -254,8 +284,43 @@ function spawnSession(opts = {}) {
     for (const c of clients) if (c.attached.has(id)) safeSend(c.ws, msg);
     broadcastSessions(); persistSessions();
   });
+  // The daemon (not the GUI) types the launch command, so it can replay it on reboot.
+  // On restore: resume Claude by id (or picker); plain/run sessions come back as a bare
+  // shell at the same cwd. On first launch: start Claude with a captured id, or run cmd.
+  let initCmd = '';
+  if (opts.restore) {
+    if (claudeId) initCmd = claudeCmd('resume-id', { claudeId });
+    else if (picker) initCmd = claudeCmd('resume-picker');
+  } else if (isClaude) {
+    initCmd = picker ? claudeCmd('resume-picker') : claudeCmd('new', { claudeId, prompt: opts.prompt });
+  } else if (opts.run) {
+    initCmd = /\r?\n$/.test(opts.run) ? opts.run : opts.run + '\r\n';
+  }
+  if (initCmd) setTimeout(() => { try { if (s.pty) s.pty.write(initCmd); } catch { /* ignore */ } }, INIT_TYPE_DELAY);
   persistSessions();
   return s;
+}
+
+// On a cold daemon boot (reboot / battery / crash), bring back every session that was
+// alive at shutdown: same shell + cwd + name/color/island, and resume Claude conversations.
+function restoreSessions() {
+  let recs;
+  try { recs = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')); } catch { return; }
+  if (!Array.isArray(recs)) return;
+  let n = 0;
+  for (const r of recs) {
+    if (r.alive === false) continue; // already exited at shutdown — don't resurrect
+    try {
+      spawnSession({
+        id: r.id, name: r.name, color: r.color, cwd: r.cwd, shell: r.shell, args: r.args,
+        island: r.island, createdAt: r.createdAt,
+        claude: r.claude, claudeId: r.claudeId, resume: r.resume, prompt: r.prompt, run: r.run,
+        restore: true,
+      });
+      n++;
+    } catch { /* skip one bad record */ }
+  }
+  if (n) console.log(`[coclaude-pit] restored ${n} session(s) from last run`);
 }
 
 function handle(client, m) {
@@ -400,6 +465,7 @@ server.listen(PORT, HOST, () => {
     { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
+  restoreSessions(); // reboot-restore: re-spawn sessions that survived to the last persist
 });
 
 server.on('error', (err) => {

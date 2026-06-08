@@ -60,6 +60,12 @@
     .pal-item .pal-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pal-item .pal-badge { color: #e3b341; font-weight: 700; }
     .pal-empty { color: #5c6675; padding: 14px; font-size: 13px; }
+    #updateBar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 200; background: #1f6feb; color: #fff; border-radius: 8px; padding: 7px 10px 7px 14px; display: flex; align-items: center; gap: 12px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+    #updateBar.hidden { display: none; }
+    #updateBar button { background: #fff; color: #1f6feb; border: none; border-radius: 6px; padding: 5px 11px; cursor: pointer; font: inherit; font-weight: 600; }
+    #updateBar button:hover { filter: brightness(.94); }
+    #updateBar #updateDismiss { cursor: pointer; opacity: .85; font-size: 12px; }
+    #updateBar #updateDismiss:hover { opacity: 1; }
     .m-now { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .m-art { width: 36px; height: 36px; border-radius: 5px; overflow: hidden; background: #141a24; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #5c6675; }
     .m-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -213,6 +219,8 @@
       <div id="status">connecting…</div>
     </div>
   </div>
+
+  <div id="updateBar" class="hidden"><span id="updateMsg"></span><button id="updateBtn">Update &amp; restart</button><span id="updateDismiss">✕</span></div>
 
   <div id="newMenu" class="menu hidden"></div>
   <div id="tabMenu" class="menu hidden"></div>

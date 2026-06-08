@@ -219,7 +219,13 @@ function closeTab(id) {
   const label = s ? (s.name || 'session') : 'session';
   if (window.confirm(`Close "${label}"? This kills the session and any process in it.`)) send({ type: 'kill', id });
 }
-function spawnTemplate(t) { pendingSpawns.push(t); send({ type: 'spawn', name: t.name || t.label, color: t.color, cwd: t.cwd, shell: t.shell || 'powershell.exe', args: t.args || ['-NoLogo'] }); }
+function spawnTemplate(t) {
+  pendingSpawns.push(t);
+  // The daemon builds + types the launch command (claude/run) so it can replay it on reboot.
+  send({ type: 'spawn', name: t.name || t.label, color: t.color, cwd: t.cwd,
+    shell: t.shell || 'powershell.exe', args: t.args || ['-NoLogo'],
+    claude: !!t.claude, resume: !!t.resume, prompt: t.prompt || null, run: t.run || null });
+}
 
 /* ---- menus ---- */
 function hideMenus() { newMenu.classList.add('hidden'); tabMenu.classList.add('hidden'); }
@@ -500,6 +506,20 @@ document.getElementById('palInput').onkeydown = (e) => {
 };
 document.getElementById('palette').addEventListener('mousedown', (e) => { if (e.target.id === 'palette') closePalette(); });
 
+/* ---- auto-update banner ---- */
+if (window.cockpit && window.cockpit.onUpdateAvailable) {
+  window.cockpit.onUpdateAvailable((v) => {
+    document.getElementById('updateMsg').textContent = `claudpit ${v} is ready`;
+    document.getElementById('updateBar').classList.remove('hidden');
+  });
+  document.getElementById('updateBtn').onclick = () => {
+    document.getElementById('updateMsg').textContent = 'Downloading update…';
+    document.getElementById('updateBtn').disabled = true;
+    window.cockpit.installUpdate();
+  };
+  document.getElementById('updateDismiss').onclick = () => document.getElementById('updateBar').classList.add('hidden');
+}
+
 /* ---- connection ---- */
 function connect() {
   if (!daemon) { statusEl.textContent = 'no daemon.json — is the daemon running?'; return; }
@@ -538,13 +558,9 @@ function connect() {
         if (renameIslandId === '__next__') renameIslandId = m.id; // inline-rename it once it renders
         break;
       case 'spawned': {
-        const t = pendingSpawns.shift();
+        pendingSpawns.shift(); // drain; the daemon now types the launch command itself
         sessions.set(m.id, m.meta);
         activeId = m.id; term.clear(); renderRail(); doFit(); term.focus();
-        const run = t && (t.claude
-          ? `claude${t.resume ? ' --resume' : ''}${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}${t.prompt ? ' ' + JSON.stringify(t.prompt) : ''}\r\n`
-          : t.run);
-        if (run) setTimeout(() => send({ type: 'input', id: m.id, data: run }), 700);
         break;
       }
       case 'attached': if (m.id === activeId) term.write(m.buffer || ''); break;

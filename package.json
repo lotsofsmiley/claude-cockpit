@@ -1,6 +1,6 @@
 {
   "name": "claudpit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "productName": "claudpit",
   "private": true,
   "description": "A Claude Code session cockpit — pwsh tabs, true live survival, Claude-as-operator. Repo: claude-cockpit.",
@@ -14,14 +14,17 @@
     "test:state": "node daemon/test-state.js",
     "test:islands": "node daemon/test-islands.js",
     "test:operator": "node daemon/test-operator.mjs",
+    "test:restore": "node daemon/test-restore.js",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
+    "electron-updater": "^6.8.9",
     "node-pty": "^1.1.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
@@ -52,6 +55,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lotsofsmiley",
+      "repo": "claude-cockpit"
     }
   }
 }

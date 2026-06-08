@@ -1,13 +1,15 @@
 'use strict';
 /* Electron main process. Ships NO native modules — it only ensures the daemon is
  * up and loads the renderer, which talks to the daemon over WebSocket. */
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 
 const DAEMON_FILE = path.join(os.homedir(), '.coclaude-pit', 'daemon.json');
+let win = null;
 
 function daemonAlive() {
   try {
@@ -34,7 +36,7 @@ async function ensureDaemon() {
 }
 
 function createWindow() {
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     width: 1100, height: 720, backgroundColor: '#0b0d10', title: 'claudpit',
     icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
@@ -57,11 +59,25 @@ function createWindow() {
   });
 }
 
+// Auto-update from GitHub Releases. quitAndInstall restarts only the GUI; the daemon is
+// detached + holds every PTY, so updating keeps all sessions running. New GUI re-attaches.
+function setupUpdates() {
+  if (!app.isPackaged) return; // updates only in the installed build
+  autoUpdater.autoDownload = false;
+  autoUpdater.on('update-available', (info) => { if (win) win.webContents.send('update-available', info.version); });
+  autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(false, true));
+  autoUpdater.on('error', () => { /* ignore (e.g. no releases yet / offline) */ });
+  ipcMain.on('install-update', () => { autoUpdater.downloadUpdate().catch(() => {}); });
+  autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null); // remove the File/Edit/View/Window bar — reclaim the space
   app.setAppUserModelId('com.lotsofsmiley.claudpit'); // distinct Windows taskbar identity
   await ensureDaemon();
   createWindow();
+  setupUpdates();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
