@@ -127,17 +127,18 @@ function buildIslandHeader(isl, count) {
   const caret = document.createElement('span');
   caret.className = 'caret'; caret.textContent = isl.collapsed ? '▸' : '▾';
 
-  const sq = document.createElement('span');
-  sq.className = 'isq'; if (isl.color) sq.style.background = isl.color;
+  const dot = document.createElement('span');
+  dot.className = 'idot'; dot.style.background = isl.color || '#5c6675';
 
   const name = document.createElement('span');
   name.className = 'iname'; name.textContent = isl.name || 'island';
+  if (isl.color) name.style.color = isl.color;
   name.ondblclick = (e) => { e.stopPropagation(); startRenameIsland(el, isl); };
 
   const cnt = document.createElement('span');
   cnt.className = 'icount'; cnt.textContent = count;
 
-  el.append(caret, sq, name, cnt);
+  el.append(caret, dot, name, cnt);
   el.onclick = () => send({ type: 'island-update', id: isl.id, collapsed: !isl.collapsed });
   el.oncontextmenu = (e) => { e.preventDefault(); openIslandMenu(e.clientX, e.clientY, isl.id); };
   return el;
@@ -156,10 +157,14 @@ function renderRail() {
   const ordered = [...islandList].sort((a, b) => (a.order || 0) - (b.order || 0));
   for (const isl of ordered) {
     const members = byIsland.get(isl.id) || [];
+    const group = document.createElement('div');
+    group.className = 'island-group';
+    if (isl.color) group.style.borderColor = isl.color;
     const hdr = buildIslandHeader(isl, members.length);
-    tabsEl.appendChild(hdr);
+    group.appendChild(hdr);
     if (renameIslandId === isl.id) { startRenameIsland(hdr, isl); renameIslandId = null; }
-    if (!isl.collapsed) members.forEach((s) => tabsEl.appendChild(buildTab(s)));
+    if (!isl.collapsed) members.forEach((s) => group.appendChild(buildTab(s)));
+    tabsEl.appendChild(group);
   }
   ungrouped.forEach((s) => tabsEl.appendChild(buildTab(s)));
   setStatus();
