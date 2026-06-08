@@ -29,6 +29,7 @@ async function ensureDaemon() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100, height: 720, backgroundColor: '#0b0d10', title: 'claudpit',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: false,

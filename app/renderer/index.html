@@ -27,7 +27,8 @@
 
     #railhead { display: flex; align-items: center; gap: 6px; }
     .layout-left #railhead { justify-content: space-between; }
-    #brand { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; }
+    #brand { font-size: 12px; letter-spacing: .6px; color: #7aa2f7; display: flex; align-items: center; gap: 6px; }
+    #brand .logo { width: 18px; height: 18px; flex: 0 0 auto; }
     #railhead .btns { display: flex; gap: 4px; }
     #railhead button { background: var(--tab); color: #aeb6c2; border: 1px solid #232b3a;
       border-radius: 6px; width: 28px; height: 24px; cursor: pointer; display: inline-flex;
@@ -131,7 +132,7 @@
   <div id="app" class="layout-left">
     <div id="rail">
       <div id="railhead">
-        <span id="brand">claudpit</span>
+        <span id="brand"><svg class="logo" viewBox="0 0 32 32" fill="none"><rect x="3" y="5" width="26" height="22" rx="5" fill="#0e1116" stroke="#1f6feb" stroke-width="2"/><path d="M9 13l4 3-4 3" stroke="#7aa2f7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="16" y1="20" x2="23" y2="20" stroke="#7aa2f7" stroke-width="2.2" stroke-linecap="round"/></svg>claudpit</span>
         <div class="btns">
           <button id="btnDash" title="Dashboard"></button>
           <button id="btnNotify" title="Notifications"></button>
