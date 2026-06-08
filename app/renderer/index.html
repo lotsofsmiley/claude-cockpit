@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>coclaude-pit</title>
+  <title>claudpit</title>
   <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
   <style>
     :root { --bg:#0b0d10; --rail:#0e1116; --line:#1c2230; --tab:#141a24; --txt:#cdd6e4;
@@ -28,6 +28,7 @@
     #railhead button { background: var(--tab); color: var(--txt); border: 1px solid #232b3a;
       border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; }
     #railhead button:hover { background: #1b2230; }
+    #btnNotify { filter: grayscale(1); } /* monochrome bell, matches the other icons */
 
     #tabs { display: flex; gap: 6px; min-width: 0; }
     .layout-left #tabs { flex-direction: column; }
@@ -81,12 +82,11 @@
   <div id="app" class="layout-left">
     <div id="rail">
       <div id="railhead">
-        <span id="brand">coclaude-pit</span>
+        <span id="brand">claudpit</span>
         <div class="btns">
-          <button id="btnNotify" title="Notifications off (click to enable)">🔕</button>
-          <button id="btnLayout" title="Toggle left / top layout">▦</button>
-          <button id="btnIsland" title="New island">⊞</button>
-          <button id="btnNew" title="New session">+</button>
+          <button id="btnNotify" title="Notifications">🔕</button>
+          <button id="btnLayout" title="Toggle layout (left / top)">▌</button>
+          <button id="btnNew" title="New session (or right-click the rail)">+</button>
         </div>
       </div>
       <div id="tabs"></div>
@@ -99,7 +99,6 @@
 
   <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
-  <script src="../../node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

@@ -7,6 +7,7 @@ const TEMPLATES = [
   { label: 'PowerShell · home',  name: 'pwsh',         shell: 'powershell.exe', args: ['-NoLogo'], cwd: null,           color: null },
   { label: 'PowerShell · vault', name: 'vault',        shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#7aa2f7' },
   { label: 'Claude · vault',     name: 'claude:vault', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#e3b341', claude: true },
+  { label: 'Claude · resume',    name: 'claude:resume', shell: 'powershell.exe', args: ['-NoLogo'], cwd: VAULT,          color: '#bc8cff', claude: true, resume: true },
   { label: 'PowerShell · dev',   name: 'dev',          shell: 'powershell.exe', args: ['-NoLogo'], cwd: 'C:\\add\\dev', color: null },
 ];
 const COLORS = ['#3fb950', '#7aa2f7', '#e3b341', '#f85149', '#bc8cff', '#39c5cf', '#ff9e64'];
@@ -26,8 +27,6 @@ const term = new Terminal({
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
-let webgl = null;
-try { if (window.WebglAddon) { webgl = new WebglAddon.WebglAddon(); term.loadAddon(webgl); } } catch (_) { webgl = null; }
 fit.fit();
 // Keep keystrokes landing in the active session: clicking the terminal area or
 // re-focusing the window always returns focus to xterm's input.
@@ -39,7 +38,6 @@ window.addEventListener('focus', () => term.focus());
 const clip = window.cockpit || {};
 function setFont(px) {
   term.options.fontSize = Math.max(8, Math.min(30, px));
-  if (webgl) { try { webgl.clearTextureAtlas(); } catch (_) { /* ignore */ } } // rebuild glyphs at the new size
   doFit();
 }
 term.attachCustomKeyEventHandler((e) => {
@@ -80,7 +78,7 @@ function stateColor(s) {
 }
 function notifyWaiting(s) {
   if (!notifyOn) return;
-  try { new Notification('coclaude-pit', { body: `${s.name || 'session'} is waiting on you`, silent: true }); } catch (_) { /* ignore */ }
+  try { new Notification('claudpit', { body: `${s.name || 'session'} is waiting on you`, silent: true }); } catch (_) { /* ignore */ }
 }
 function setStatus() {
   statusEl.textContent = sessions.size ? daemonLabel : (daemonLabel ? daemonLabel + ' · click + to start' : 'connecting…');
@@ -264,11 +262,20 @@ document.addEventListener('mousedown', (e) => { if (!e.target.closest('.menu')) 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenus(); });
 
 /* ---- layout ---- */
-function setLayout(mode) { appEl.className = 'layout-' + mode; localStorage.setItem('coclaude.layout', mode); setTimeout(doFit, 50); }
+function setLayout(mode) {
+  appEl.className = 'layout-' + mode;
+  localStorage.setItem('coclaude.layout', mode);
+  const b = document.getElementById('btnLayout');
+  if (b) b.textContent = mode === 'left' ? '▌' : '▀';
+  setTimeout(doFit, 50);
+}
 setLayout(localStorage.getItem('coclaude.layout') || 'left');
 document.getElementById('btnLayout').onclick = () => setLayout(appEl.classList.contains('layout-left') ? 'top' : 'left');
-document.getElementById('btnIsland').onclick = () => createIsland();
 document.getElementById('btnNew').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); openNewMenu(r.left, r.bottom + 4); };
+document.getElementById('rail').addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.tab') || e.target.closest('.island-hdr')) return; // those have their own menus
+  e.preventDefault(); openNewMenu(e.clientX, e.clientY);
+});
 function setNotify(on) {
   notifyOn = on; localStorage.setItem('coclaude.notify', on ? '1' : '0');
   const b = document.getElementById('btnNotify');
@@ -317,7 +324,7 @@ function connect() {
         sessions.set(m.id, m.meta);
         activeId = m.id; term.clear(); renderRail(); doFit(); term.focus();
         const run = t && (t.claude
-          ? `claude${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}\r\n`
+          ? `claude${t.resume ? ' --resume' : ''}${daemon && daemon.claudeSettings ? ` --settings "${daemon.claudeSettings}"` : ''}${daemon && daemon.mcpConfig ? ` --mcp-config "${daemon.mcpConfig}"` : ''}\r\n`
           : t.run);
         if (run) setTimeout(() => send({ type: 'input', id: m.id, data: run }), 700);
         break;
@@ -325,7 +332,7 @@ function connect() {
       case 'attached': if (m.id === activeId) term.write(m.buffer || ''); break;
       case 'data':     if (m.id === activeId) term.write(m.data); break;
       case 'exit':     if (m.id === activeId) term.writeln(`\r\n\x1b[31m[session exited: ${m.exitCode}]\x1b[0m`); break;
-      case 'notify':   if (notifyOn) { try { new Notification('coclaude-pit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } break;
+      case 'notify':   if (notifyOn) { try { new Notification('claudpit · Claude', { body: m.message, silent: true }); } catch (_) { /* ignore */ } } break;
     }
   };
 }
