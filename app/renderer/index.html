@@ -131,7 +131,12 @@
       font: inherit; border-radius: 4px; padding: 1px 4px; width: 110px; text-transform: none; }
     .island-group { display: flex; gap: 6px; border: 1px solid #20283a; border-radius: 8px; padding: 6px; }
     .layout-left .island-group { flex-direction: column; }
-    .layout-top .island-group { flex-direction: row; align-items: center; }
+    /* Top bar: one consistent height for everything — open/closed islands and grouped/ungrouped
+       tabs all 30px. Islands drop the bordered box (which made them taller) and group via the
+       color tint + header chip instead, so heights stay uniform. */
+    .layout-top .island-group { flex-direction: row; align-items: center; height: 30px; box-sizing: border-box; padding: 0 4px; border: none; gap: 6px; }
+    .layout-top .tab { height: 30px; box-sizing: border-box; }
+    .layout-top .island-hdr { height: 30px; box-sizing: border-box; }
     .layout-top .island-hdr .icount { margin-left: 4px; }
     .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab .x { margin-left: auto; opacity: 0; width: 16px; height: 16px; line-height: 14px;

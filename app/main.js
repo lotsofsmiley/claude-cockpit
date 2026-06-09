@@ -33,7 +33,7 @@ async function ensureDaemon() {
     // dev: system node (node-pty is built for system Node)
     cmd = process.platform === 'win32' ? 'node.exe' : 'node'; args = [daemonPath]; env = process.env;
   }
-  const child = spawn(cmd, args, { detached: true, stdio: 'ignore', env });
+  const child = spawn(cmd, args, { detached: true, stdio: 'ignore', env, windowsHide: true });
   child.unref();
   for (let i = 0; i < 40 && !daemonAlive(); i++) await new Promise((r) => setTimeout(r, 100));
 }
@@ -48,7 +48,7 @@ function killDaemonTree() {
     try { fs.unlinkSync(DAEMON_FILE); } catch { /* ignore */ }
     if (!pid) return resolve();
     if (process.platform === 'win32') {
-      const k = spawn('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
+      const k = spawn('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
       k.on('exit', () => resolve()); k.on('error', () => resolve());
     } else { try { process.kill(pid); } catch { /* ignore */ } resolve(); }
   });

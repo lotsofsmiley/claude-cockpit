@@ -2,6 +2,28 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.5
+
+### Fixed
+- **States and badges are accurate now.** Switching layouts or opening a tab no longer flips
+  sessions to "running" or raises false badges — resize/repaint output is no longer mistaken for
+  the session actually working.
+- **Hidden consoles.** Internal commands (killing a tab's process tree, restarting the engine,
+  launching the daemon) no longer flash a console window.
+- **Top bar consistency.** Open and collapsed islands are the same height, and tabs inside
+  islands match the height of tabs outside.
+
+### Added
+- **Legacy tabs learn their conversation.** A tab opened with the old picker (no pinned id) now
+  captures its Claude session id from Claude's own session files while you're viewing it — so
+  after you re-pick once, it restores to the *exact* conversation on every future restart. Safe:
+  only the tab you're viewing, only the freshest unclaimed conversation, and never while another
+  tab in the same folder is running (so it can't pin the wrong chat).
+
+### Note
+- Engine restarts once to apply. After updating, re-pick each legacy tab once — that pick is now
+  captured, and from then on they restore exactly.
+
 ## 0.3.4
 
 ### Fixed

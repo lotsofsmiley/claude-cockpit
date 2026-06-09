@@ -34,6 +34,7 @@ const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'server.mjs');
 const MEDIA_HELPER = path.join(__dirname, 'media-helper.ps1');
 const MEDIA_CMD_FILE = path.join(STATE_DIR, 'media-cmd.txt');
 const CONFIG_FILE = path.join(STATE_DIR, 'config.json');
+const CLAUDE_PROJECTS = path.join(os.homedir(), '.claude', 'projects'); // where claude stores per-cwd session .jsonl files
 // Shipped defaults for a fresh user: generic session openers, no vault.
 const DEFAULT_CONFIG = {
   templates: [
@@ -69,6 +70,7 @@ const sessions = new Map();
 const islands = new Map();
 try { JSON.parse(fs.readFileSync(ISLANDS_FILE, 'utf8')).forEach((i) => islands.set(i.id, i)); } catch { /* none yet */ }
 const notifications = []; // Claude -> Filipe inbox (last 50)
+let activeTab = null;    // id of the tab the GUI is currently viewing (for claude-id capture)
 let mediaState = null;   // { playing, status, title, artist, position, duration }
 let mediaThumb = '';     // cached art data-URL (sent only when the track changes)
 let mediaHelper = null;
@@ -88,7 +90,7 @@ function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data)
 
 // Kill a pty's whole process tree (shell -> claude -> claude's MCP servers). node-pty's
 // kill leaves grandchildren orphaned on Windows, which is how claude/node processes pile up.
-function killTree(pid) { if (pid) { try { exec(`taskkill /F /T /PID ${pid}`); } catch { /* ignore */ } } }
+function killTree(pid) { if (pid) { try { exec(`taskkill /F /T /PID ${pid}`, { windowsHide: true }); } catch { /* ignore */ } } }
 
 // A self-sufficient record for reboot-restore: everything needed to re-spawn the shell
 // AND resume the Claude conversation, without the GUI being involved.
@@ -274,8 +276,12 @@ function spawnSession(opts = {}) {
   sessions.set(id, s);
   p.onData((data) => {
     appendBuffer(s, data);
-    s.lastDataAt = Date.now();
-    if (s.state !== 'running') { s.state = 'running'; s.stateAt = iso(); broadcastSessions(); }
+    // Output right after a resize is just a repaint (layout switch / tab open / window resize),
+    // NOT the session working. Don't let it flip state to "running" or it raises false badges.
+    if (Date.now() >= (s.ignoreStateUntil || 0)) {
+      s.lastDataAt = Date.now();
+      if (s.state !== 'running') { s.state = 'running'; s.stateAt = iso(); broadcastSessions(); }
+    }
     const msg = JSON.stringify({ type: 'data', id, data });
     for (const c of clients) if (c.attached.has(id)) safeSend(c.ws, msg);
   });
@@ -341,6 +347,7 @@ function handle(client, m) {
       const s = sessions.get(m.id);
       if (!s) { safeSend(ws, JSON.stringify({ type: 'error', message: 'no such session' })); break; }
       client.attached.add(m.id);
+      activeTab = m.id; // the GUI is viewing this tab — used by the claude-id capture below
       safeSend(ws, JSON.stringify({ type: 'attached', id: m.id, buffer: s.buffer.join(''), meta: meta(s) }));
       break;
     }
@@ -348,7 +355,10 @@ function handle(client, m) {
     case 'input': { const s = sessions.get(m.id); if (s && s.pty) s.pty.write(m.data); break; }
     case 'resize': {
       const s = sessions.get(m.id);
-      if (s && s.pty) { try { s.pty.resize(m.cols, m.rows); s.cols = m.cols; s.rows = m.rows; } catch { /* ignore */ } }
+      // only resize (and mark the repaint window) when the size actually changed
+      if (s && s.pty && (m.cols !== s.cols || m.rows !== s.rows)) {
+        try { s.pty.resize(m.cols, m.rows); s.cols = m.cols; s.rows = m.rows; s.ignoreStateUntil = Date.now() + 1500; } catch { /* ignore */ }
+      }
       break;
     }
     case 'rename': {
@@ -511,6 +521,37 @@ setInterval(() => {
     }
   }
 }, 500);
+
+// Claude-id capture: legacy tabs opened with the interactive picker have no pinned conversation
+// id, so they re-show the picker on every restore. Here we LEARN each tab's id by reading claude's
+// own session files (~/.claude/projects/<cwd-slug>/<id>.jsonl). We only ever attribute to the tab
+// the GUI is actively viewing, only the freshest UNCLAIMED file, and never while another live tab
+// in the same folder is running — so we can't pin the wrong conversation. Once captured, the next
+// restore resumes by id. Pinned (--session-id) tabs already have an id and are skipped.
+const cwdSlug = (cwd) => String(cwd || '').replace(/[\\/:]/g, '-');
+function claimedClaudeIds() { const set = new Set(); for (const s of sessions.values()) if (s.claudeId) set.add(s.claudeId); return set; }
+function tryCaptureClaudeId() {
+  const s = activeTab && sessions.get(activeTab);
+  if (!s || !s.pty || !s.claude || s.claudeId) return; // only an active claude tab still missing an id
+  for (const o of sessions.values()) { // bail if another live claude tab in the same folder is running (could be the writer)
+    if (o !== s && o.pty && o.claude && o.cwd === s.cwd && o.state === 'running') return;
+  }
+  let files;
+  try { files = fs.readdirSync(path.join(CLAUDE_PROJECTS, cwdSlug(s.cwd))).filter((f) => f.endsWith('.jsonl')); } catch { return; }
+  const claimed = claimedClaudeIds();
+  let best = null, bestM = 0;
+  for (const f of files) {
+    const id = f.replace(/\.jsonl$/, '');
+    if (claimed.has(id)) continue;
+    let mt; try { mt = fs.statSync(path.join(CLAUDE_PROJECTS, cwdSlug(s.cwd), f)).mtimeMs; } catch { continue; }
+    if (mt > bestM) { bestM = mt; best = id; }
+  }
+  if (best && Date.now() - bestM < 30000) { // recently active = the conversation the user just opened/used
+    s.claudeId = best; s.resume = false; persistSessions(); broadcastSessions();
+    console.log(`[coclaude-pit] pinned "${s.name}" -> claude session ${best}`);
+  }
+}
+setInterval(tryCaptureClaudeId, 2500);
 
 process.on('SIGINT', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });
 process.on('SIGTERM', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });
