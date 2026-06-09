@@ -183,8 +183,7 @@ function renderRail() {
     const hdr = buildIslandHeader(isl, members.length);
     group.appendChild(hdr);
     if (renameIslandId === isl.id) { startRenameIsland(hdr, isl); renameIslandId = null; }
-    const collapsed = isl.collapsed && appEl.classList.contains('layout-left'); // collapse only in the vertical rail
-    if (!collapsed) members.forEach((s) => group.appendChild(buildTab(s)));
+    if (!isl.collapsed) members.forEach((s) => group.appendChild(buildTab(s))); // collapse works in both layouts now
     tabsEl.appendChild(group);
   }
   ungrouped.forEach((s) => tabsEl.appendChild(buildTab(s)));

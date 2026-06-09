@@ -1,6 +1,6 @@
 {
   "name": "claudpit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "productName": "claudpit",
   "private": true,
   "description": "A Claude Code session cockpit — pwsh tabs, true live survival, Claude-as-operator. Repo: claude-cockpit.",

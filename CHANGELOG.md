@@ -2,6 +2,16 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.4
+
+### Fixed
+- Ungrouped tabs now match the width of tabs inside islands (left/vertical layout).
+- Islands collapse/expand in **both** layouts (top + left), consistently — the caret shows in
+  both, and the collapsed state is shared.
+- Taskbar icon enlarged again (bold frame near the edges, same `>_` design). If it still looks
+  like the old small one, Windows cached the pinned icon — unpin + repin claudpit (or restart
+  Explorer) to refresh.
+
 ## 0.3.3
 
 ### Fixed
