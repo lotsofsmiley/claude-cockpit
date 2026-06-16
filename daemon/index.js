@@ -83,7 +83,7 @@ const meta = (s) => ({
   cols: s.cols, rows: s.rows, createdAt: s.createdAt,
   alive: !!s.pty, lastExit: s.lastExit ?? null,
   state: s.state ?? null, stateAt: s.stateAt ?? null,
-  island: s.island ?? null,
+  island: s.island ?? null, order: s.order ?? 0,
 });
 
 function safeSend(ws, data) { try { if (ws.readyState === ws.OPEN) ws.send(data); } catch { /* ignore */ } }
@@ -97,7 +97,7 @@ function killTree(pid) { if (pid) { try { exec(`taskkill /F /T /PID ${pid}`, { w
 function restoreRecord(s) {
   return {
     id: s.id, name: s.name, color: s.color, cwd: s.cwd, shell: s.shell, args: s.args,
-    island: s.island ?? null, createdAt: s.createdAt,
+    island: s.island ?? null, order: s.order ?? 0, createdAt: s.createdAt,
     claude: !!s.claude, claudeId: s.claudeId || null, resume: !!s.resume,
     prompt: s.prompt || null, run: s.run || null,
     alive: !!s.pty, lastExit: s.lastExit ?? null,
@@ -271,6 +271,7 @@ function spawnSession(opts = {}) {
     cwd, shell, args, cols, rows, createdAt: opts.createdAt || iso(),
     pty: p, buffer: [], bufferBytes: 0, lastExit: null,
     state: null, stateAt: null, lastDataAt: 0, island: opts.island || null,
+    order: opts.order ?? sessions.size, // fresh tabs append to the end; restored tabs keep their saved order
     claude: isClaude, claudeId, resume: isClaude && !claudeId, prompt: opts.prompt || null, run: opts.run || null,
   };
   sessions.set(id, s);
@@ -320,7 +321,7 @@ function restoreSessions() {
     try {
       spawnSession({
         id: r.id, name: r.name, color: r.color, cwd: r.cwd, shell: r.shell, args: r.args,
-        island: r.island, createdAt: r.createdAt,
+        island: r.island, order: r.order, createdAt: r.createdAt,
         claude: r.claude, claudeId: r.claudeId, resume: r.resume, prompt: r.prompt, run: r.run,
         restore: true,
       });
@@ -403,6 +404,20 @@ function handle(client, m) {
     case 'session-move': {
       const s = sessions.get(m.id);
       if (s) { s.island = m.island || null; persistSessions(); broadcastSessions(); }
+      break;
+    }
+    case 'reorder': {
+      // The GUI sends the full desired arrangement after a drag-drop: groups maps each island id
+      // (or 'ungrouped') -> ordered member ids; islands is the ordered island list. We stamp
+      // island + order onto every session and order onto every island, then persist + broadcast.
+      if (m.groups && typeof m.groups === 'object') {
+        for (const [key, ids] of Object.entries(m.groups)) {
+          const island = key === 'ungrouped' ? null : key;
+          if (Array.isArray(ids)) ids.forEach((id, i) => { const s = sessions.get(id); if (s) { s.island = island; s.order = i; } });
+        }
+      }
+      if (Array.isArray(m.islands)) m.islands.forEach((id, i) => { const isl = islands.get(id); if (isl) isl.order = i; });
+      persistSessions(); persistIslands(); broadcastSessions();
       break;
     }
     case 'read-buffer': {

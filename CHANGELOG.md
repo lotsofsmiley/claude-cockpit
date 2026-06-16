@@ -2,6 +2,17 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.6
+
+### Added
+- **Drag-and-drop.** Drag a tab to reorder it, move it between islands, drag it into an island,
+  or drag it out to the ungrouped area. Drag an island's header to reorder islands. The order
+  persists across restarts (sessions now carry an `order`, like islands do). Drop indicators show
+  where a tab will land. Works in both the side and top layouts.
+
+### Note
+- Engine restarts once to apply (sessions restore through it).
+
 ## 0.3.5
 
 ### Fixed

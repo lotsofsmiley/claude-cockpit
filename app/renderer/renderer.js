@@ -83,9 +83,12 @@ const bgRun = new Map();      // id -> bool: did the current run begin while the
 const pendingSpawns = [];
 let renamingActive = false;  // an inline rename is open — don't let a rail re-render or focus-steal clobber it
 let railDirty = false;       // a rail re-render was deferred during a rename
+let dragKind = null;         // 'tab' | 'island' while a drag is in progress
+let dragId = null;           // id of the tab/island being dragged
 
 const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const firstId = () => (sessions.size ? [...sessions.keys()][0] : null);
+const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
 
 function stateColor(s) {
   switch (s.state) {
@@ -135,6 +138,19 @@ function buildTab(s) {
   else el.append(dot, name, x);
   el.onclick = () => attach(s.id);
   el.oncontextmenu = (e) => { e.preventDefault(); openTabMenu(e.clientX, e.clientY, s.id); };
+
+  // drag-and-drop: reorder within/between islands, drag in/out of islands
+  el.draggable = true;
+  el.addEventListener('dragstart', (e) => { dragKind = 'tab'; dragId = s.id; el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', s.id); } catch (_) { /* ignore */ } });
+  el.addEventListener('dragend', () => { el.classList.remove('dragging'); clearDropMarks(); dragKind = dragId = null; });
+  el.addEventListener('dragover', (e) => { if (dragKind !== 'tab' || dragId === s.id) return; e.preventDefault(); e.stopPropagation(); el.classList.toggle('drop-after', isAfter(el, e)); el.classList.toggle('drop-before', !isAfter(el, e)); });
+  el.addEventListener('dragleave', () => el.classList.remove('drop-before', 'drop-after'));
+  el.addEventListener('drop', (e) => {
+    if (dragKind !== 'tab' || dragId === s.id) return;
+    e.preventDefault(); e.stopPropagation();
+    const grp = (s.island && islandList.some((i) => i.id === s.island)) ? s.island : 'ungrouped';
+    moveTabTo(dragId, grp, isAfter(el, e) ? nextInGroup(s) : s.id);
+  });
   return el;
 }
 
@@ -160,6 +176,19 @@ function buildIslandHeader(isl, count) {
   el.append(caret, dot, name, cnt);
   el.onclick = () => send({ type: 'island-update', id: isl.id, collapsed: !isl.collapsed });
   el.oncontextmenu = (e) => { e.preventDefault(); openIslandMenu(e.clientX, e.clientY, isl.id); };
+
+  // drag the header to reorder islands; drop a tab on it to move the tab into this island
+  el.draggable = true;
+  el.addEventListener('dragstart', (e) => { e.stopPropagation(); dragKind = 'island'; dragId = isl.id; e.dataTransfer.effectAllowed = 'move'; });
+  el.addEventListener('dragend', () => { clearDropMarks(); dragKind = dragId = null; });
+  el.addEventListener('dragover', (e) => { if ((dragKind === 'island' && dragId !== isl.id) || dragKind === 'tab') { e.preventDefault(); e.stopPropagation(); el.classList.add('drop-isl'); } });
+  el.addEventListener('dragleave', () => el.classList.remove('drop-isl'));
+  el.addEventListener('drop', (e) => {
+    if (dragKind !== 'island' && dragKind !== 'tab') return;
+    e.preventDefault(); e.stopPropagation(); el.classList.remove('drop-isl');
+    if (dragKind === 'island') moveIslandBefore(dragId, isl.id);
+    else moveTabTo(dragId, isl.id, null);
+  });
   return el;
 }
 
@@ -174,12 +203,17 @@ function renderRail() {
       byIsland.get(s.island).push(s);
     } else ungrouped.push(s);
   }
+  byIsland.forEach((arr) => arr.sort(byOrder));
+  ungrouped.sort(byOrder);
   const ordered = [...islandList].sort((a, b) => (a.order || 0) - (b.order || 0));
   for (const isl of ordered) {
     const members = byIsland.get(isl.id) || [];
     const group = document.createElement('div');
     group.className = 'island-group';
+    group.dataset.island = isl.id;
     if (isl.color) { group.style.borderColor = fade(isl.color, 0.3); group.style.background = fade(isl.color, 0.05); }
+    group.addEventListener('dragover', (e) => { if (dragKind === 'tab') e.preventDefault(); });
+    group.addEventListener('drop', (e) => { if (dragKind === 'tab') { e.preventDefault(); moveTabTo(dragId, isl.id, null); } });
     const hdr = buildIslandHeader(isl, members.length);
     group.appendChild(hdr);
     if (renameIslandId === isl.id) { startRenameIsland(hdr, isl); renameIslandId = null; }
@@ -189,6 +223,49 @@ function renderRail() {
   ungrouped.forEach((s) => tabsEl.appendChild(buildTab(s)));
   setStatus();
 }
+
+/* ---- drag-and-drop helpers ---- */
+// Snapshot the current arrangement: each island id (and 'ungrouped') -> ordered member ids,
+// plus the ordered island list. Drops mutate a copy of this and send it back to the daemon.
+function currentGroups() {
+  const islands = [...islandList].sort(byOrder).map((i) => i.id);
+  const groups = {};
+  const live = [...sessions.values()];
+  for (const id of islands) groups[id] = live.filter((s) => s.island === id).sort(byOrder).map((s) => s.id);
+  groups.ungrouped = live.filter((s) => !s.island || !islandList.some((i) => i.id === s.island)).sort(byOrder).map((s) => s.id);
+  return { groups, islands };
+}
+function isAfter(el, e) { // is the cursor past the midpoint of this tab (so we insert AFTER it)?
+  const r = el.getBoundingClientRect();
+  return appEl.classList.contains('layout-left') ? e.clientY > r.top + r.height / 2 : e.clientX > r.left + r.width / 2;
+}
+function nextInGroup(s) {
+  const grp = (s.island && islandList.some((i) => i.id === s.island)) ? s.island : 'ungrouped';
+  const ids = currentGroups().groups[grp] || [];
+  const i = ids.indexOf(s.id);
+  return (i >= 0 && i < ids.length - 1) ? ids[i + 1] : null;
+}
+function clearDropMarks() { document.querySelectorAll('.drop-before,.drop-after,.drop-isl').forEach((el) => el.classList.remove('drop-before', 'drop-after', 'drop-isl')); }
+function moveTabTo(id, targetKey, beforeId) {
+  if (!id) return;
+  const { groups, islands } = currentGroups();
+  for (const k of Object.keys(groups)) groups[k] = groups[k].filter((x) => x !== id); // pull it out of wherever it was
+  const arr = groups[targetKey] || (groups[targetKey] = []);
+  const idx = beforeId ? arr.indexOf(beforeId) : -1;
+  if (idx >= 0) arr.splice(idx, 0, id); else arr.push(id);
+  send({ type: 'reorder', groups, islands });
+}
+function moveIslandBefore(id, beforeId) {
+  if (!id || id === beforeId) return;
+  const { groups, islands } = currentGroups();
+  const arr = islands.filter((x) => x !== id);
+  const idx = beforeId ? arr.indexOf(beforeId) : -1;
+  if (idx >= 0) arr.splice(idx, 0, id); else arr.push(id);
+  send({ type: 'reorder', groups, islands: arr });
+}
+// dropping a tab on empty rail space (not on a tab/island) sends it to the ungrouped list
+tabsEl.addEventListener('dragover', (e) => { if (dragKind === 'tab') e.preventDefault(); });
+tabsEl.addEventListener('drop', (e) => { if (dragKind === 'tab') { e.preventDefault(); moveTabTo(dragId, 'ungrouped', null); } });
 
 /* ---- actions ---- */
 function attach(id) {
