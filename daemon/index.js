@@ -309,6 +309,24 @@ function spawnSession(opts = {}) {
   return s;
 }
 
+// One-time cleanup of the bad pins left by the removed 0.3.5 capture: clear every claude tab's
+// claudeId so they fall back to the (correct) picker instead of resuming a mis-attributed
+// conversation. Runs once, guarded by a marker. Fresh tabs re-pick once; nothing resumes wrong.
+const CAPTURE_RESET_MARKER = path.join(STATE_DIR, '.capture-reset-v1');
+function oneTimeCaptureReset() {
+  if (fs.existsSync(CAPTURE_RESET_MARKER)) return;
+  try {
+    const recs = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    if (Array.isArray(recs)) {
+      let n = 0;
+      for (const r of recs) if (r.claude && r.claudeId) { r.claudeId = null; r.resume = true; n++; }
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(recs, null, 2));
+      if (n) console.log(`[coclaude-pit] capture-reset: cleared ${n} possibly-misattributed pin(s)`);
+    }
+  } catch { /* no sessions file yet */ }
+  try { fs.writeFileSync(CAPTURE_RESET_MARKER, iso()); } catch { /* ignore */ }
+}
+
 // On a cold daemon boot (reboot / battery / crash), bring back every session that was
 // alive at shutdown: same shell + cwd + name/color/island, and resume Claude conversations.
 function restoreSessions() {
@@ -491,7 +509,8 @@ server.listen(PORT, HOST, () => {
     { port: PORT, token: TOKEN, pid: process.pid, version: VERSION, engineRev: ENGINE_REV, startedAt: iso(), mcpConfig: MCP_CONFIG_FILE }, null, 2));
   console.log(`[coclaude-pit] daemon v${VERSION} on http+ws://${HOST}:${PORT} (pid ${process.pid})`);
   console.log(`[coclaude-pit] state dir: ${STATE_DIR}`);
-  restoreSessions(); // reboot-restore: re-spawn sessions that survived to the last persist
+  oneTimeCaptureReset();   // clear bad 0.3.5 capture pins before restoring (once)
+  restoreSessions();       // reboot-restore: re-spawn sessions that survived to the last persist
 });
 
 server.on('error', (err) => {
@@ -537,36 +556,11 @@ setInterval(() => {
   }
 }, 500);
 
-// Claude-id capture: legacy tabs opened with the interactive picker have no pinned conversation
-// id, so they re-show the picker on every restore. Here we LEARN each tab's id by reading claude's
-// own session files (~/.claude/projects/<cwd-slug>/<id>.jsonl). We only ever attribute to the tab
-// the GUI is actively viewing, only the freshest UNCLAIMED file, and never while another live tab
-// in the same folder is running — so we can't pin the wrong conversation. Once captured, the next
-// restore resumes by id. Pinned (--session-id) tabs already have an id and are skipped.
-const cwdSlug = (cwd) => String(cwd || '').replace(/[\\/:]/g, '-');
-function claimedClaudeIds() { const set = new Set(); for (const s of sessions.values()) if (s.claudeId) set.add(s.claudeId); return set; }
-function tryCaptureClaudeId() {
-  const s = activeTab && sessions.get(activeTab);
-  if (!s || !s.pty || !s.claude || s.claudeId) return; // only an active claude tab still missing an id
-  for (const o of sessions.values()) { // bail if another live claude tab in the same folder is running (could be the writer)
-    if (o !== s && o.pty && o.claude && o.cwd === s.cwd && o.state === 'running') return;
-  }
-  let files;
-  try { files = fs.readdirSync(path.join(CLAUDE_PROJECTS, cwdSlug(s.cwd))).filter((f) => f.endsWith('.jsonl')); } catch { return; }
-  const claimed = claimedClaudeIds();
-  let best = null, bestM = 0;
-  for (const f of files) {
-    const id = f.replace(/\.jsonl$/, '');
-    if (claimed.has(id)) continue;
-    let mt; try { mt = fs.statSync(path.join(CLAUDE_PROJECTS, cwdSlug(s.cwd), f)).mtimeMs; } catch { continue; }
-    if (mt > bestM) { bestM = mt; best = id; }
-  }
-  if (best && Date.now() - bestM < 30000) { // recently active = the conversation the user just opened/used
-    s.claudeId = best; s.resume = false; persistSessions(); broadcastSessions();
-    console.log(`[coclaude-pit] pinned "${s.name}" -> claude session ${best}`);
-  }
-}
-setInterval(tryCaptureClaudeId, 2500);
+// NOTE: the file-scan "claude-id capture" (0.3.5) was REMOVED in 0.3.7 — it guessed a tab's
+// conversation from the freshest .jsonl in the tab's folder, which mis-attributed when multiple
+// claude sessions (other tabs OR standing agents) share that folder, cross-wiring conversations.
+// A reliable replacement (each claude reporting its own id via a silent hook, tagged with its tab)
+// is planned. Until then, legacy picker tabs just re-show the picker on restore — never wrong.
 
 process.on('SIGINT', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });
 process.on('SIGTERM', () => { try { if (mediaHelper) mediaHelper.kill(); } catch { /* ignore */ } process.exit(0); });

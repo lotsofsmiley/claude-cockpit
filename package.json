@@ -1,6 +1,6 @@
 {
   "name": "claudpit",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "productName": "claudpit",
   "private": true,
   "description": "A Claude Code session cockpit — pwsh tabs, true live survival, Claude-as-operator. Repo: claude-cockpit.",
@@ -17,7 +17,6 @@
     "test:islands": "node daemon/test-islands.js",
     "test:operator": "node daemon/test-operator.mjs",
     "test:restore": "node daemon/test-restore.js",
-    "test:capture": "node daemon/test-capture.js",
     "test:reorder": "node daemon/test-reorder.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",

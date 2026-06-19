@@ -2,6 +2,19 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.7
+
+### Fixed (important)
+- **Removed the 0.3.5 conversation auto-capture — it could pin the wrong conversation.** It
+  guessed a tab's chat from the most-recently-active file in that tab's folder, which cross-wires
+  when several Claude sessions share a folder (multiple tabs, or your standing agents running
+  outside the cockpit). On this update every Claude tab's pin is **cleared once**, so nothing
+  resumes a mis-attributed conversation — tabs fall back to the picker, which is always correct.
+
+### Note
+- After updating, your tabs show the resume picker again — re-pick each one. They won't auto-pin
+  for now; a reliable version (each Claude reporting its own id, not guessed) is coming.
+
 ## 0.3.6
 
 ### Added
