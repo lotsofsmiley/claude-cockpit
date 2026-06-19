@@ -2,6 +2,20 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.8
+
+### Fixed
+- **The "Claude · resume" session type opens the picker again.** Since 0.3.3, *every* new Claude
+  tab started a fresh conversation (`--session-id`), which silently broke the resume template —
+  it could no longer open an existing conversation, it just made a new empty one (the "random id"
+  session). Now: a **resume** template opens Claude's interactive picker so you can attach an
+  existing conversation; a normal Claude tab still gets a fresh, pinned conversation that restores
+  exactly. (Picker tabs re-show the picker on restart — they don't pin yet; reliable pinning is
+  coming via the hook approach.)
+
+### Note
+- Engine restarts once to apply.
+
 ## 0.3.7
 
 ### Fixed (important)

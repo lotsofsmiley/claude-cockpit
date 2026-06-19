@@ -257,10 +257,12 @@ function spawnSession(opts = {}) {
   const args = opts.args || DEFAULT_SHELL_ARGS;
   const cols = opts.cols || 80, rows = opts.rows || 24;
   const isClaude = !!opts.claude;
-  // Every managed claude tab pins its conversation with a stable --session-id, so it restores to
-  // the EXACT chat. Fresh launch gets a new id; a restored record reuses its id. Legacy records
-  // (opened with the old interactive picker) have no id -> picker fallback on restore only.
-  const claudeId = isClaude ? (opts.claudeId || (opts.restore ? null : crypto.randomUUID())) : null;
+  // A "resume" template (opts.resume) opens claude's interactive picker to attach an EXISTING
+  // conversation — no pinned id, so it re-shows the picker on restart. A normal claude tab gets a
+  // fresh --session-id that restores to the EXACT chat. Restored records reuse their id; legacy
+  // records (or picker tabs) with no id fall back to the picker.
+  const picker = isClaude && !!opts.resume && !opts.claudeId;
+  const claudeId = isClaude && !picker ? (opts.claudeId || (opts.restore ? null : crypto.randomUUID())) : null;
   const env = Object.assign({}, process.env, {
     ADD_TERM_TAB_ID: id,
     COCLAUDE_HOOK_URL: `http://${HOST}:${PORT}/hook`,
@@ -298,9 +300,9 @@ function spawnSession(opts = {}) {
   let initCmd = '';
   if (opts.restore) {
     if (claudeId) initCmd = claudeCmd('resume-id', { claudeId });
-    else if (isClaude) initCmd = claudeCmd('resume-picker'); // legacy session with no pinned id
+    else if (isClaude) initCmd = claudeCmd('resume-picker'); // picker / legacy session with no pinned id
   } else if (isClaude) {
-    initCmd = claudeCmd('new', { claudeId, prompt: opts.prompt });
+    initCmd = picker ? claudeCmd('resume-picker') : claudeCmd('new', { claudeId, prompt: opts.prompt });
   } else if (opts.run) {
     initCmd = /\r?\n$/.test(opts.run) ? opts.run : opts.run + '\r\n';
   }
