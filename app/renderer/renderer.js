@@ -51,15 +51,32 @@ function setFont(px) {
   doFit();
 }
 term.attachCustomKeyEventHandler((e) => {
-  if (e.type !== 'keydown' || !e.ctrlKey) return true;
-  const k = e.key.toLowerCase();
-  if (e.shiftKey && k === 'c') { const s = term.getSelection(); if (s && clip.clipboardWrite) clip.clipboardWrite(s); e.preventDefault(); return false; }
-  if (!e.shiftKey && k === 'c' && term.hasSelection()) { if (clip.clipboardWrite) clip.clipboardWrite(term.getSelection()); e.preventDefault(); return false; }
-  if (k === 'v') { const t = clip.clipboardRead && clip.clipboardRead(); if (activeId && t) send({ type: 'input', id: activeId, data: t }); e.preventDefault(); return false; }
-  // Ctrl+K is handled at the document level (capture) so it works from any focus — see below.
-  if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
-  if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
-  if (k === '0') { setFont(14); e.preventDefault(); return false; }
+  if (e.type !== 'keydown') return true;
+  if (e.ctrlKey) {
+    const k = e.key.toLowerCase();
+    if (e.shiftKey && k === 'c') { const s = term.getSelection(); if (s && clip.clipboardWrite) clip.clipboardWrite(s); e.preventDefault(); return false; }
+    if (!e.shiftKey && k === 'c' && term.hasSelection()) { if (clip.clipboardWrite) clip.clipboardWrite(term.getSelection()); e.preventDefault(); return false; }
+    if (k === 'v') { const t = clip.clipboardRead && clip.clipboardRead(); if (activeId && t) send({ type: 'input', id: activeId, data: t }); e.preventDefault(); return false; }
+    // Ctrl+K is handled at the document level (capture) so it works from any focus — see below.
+    if (k === '=' || k === '+') { setFont(term.options.fontSize + 1); e.preventDefault(); return false; }
+    if (k === '-') { setFont(term.options.fontSize - 1); e.preventDefault(); return false; }
+    if (k === '0') { setFont(14); e.preventDefault(); return false; }
+    return true;
+  }
+  // Workaround for an Electron keyboard regression where CapsLock-cased letters and the spacebar
+  // get dropped/mis-cased in the terminal: compute the intended char and send it straight to the
+  // session, bypassing the broken path. Guarded to never touch dead-key/IME composition (Portuguese
+  // accents), AltGr (Ctrl+Alt), or other modifier combos.
+  if (!e.altKey && !e.metaKey && !e.isComposing && activeId && !modalBlocking()) {
+    if (e.getModifierState && e.getModifierState('CapsLock') && e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+      send({ type: 'input', id: activeId, data: e.shiftKey ? e.key.toLowerCase() : e.key.toUpperCase() });
+      e.preventDefault(); return false;
+    }
+    if (e.key === ' ' || e.code === 'Space') {
+      send({ type: 'input', id: activeId, data: ' ' });
+      e.preventDefault(); return false;
+    }
+  }
   return true;
 });
 

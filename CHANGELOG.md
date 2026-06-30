@@ -2,6 +2,15 @@
 
 All notable changes to **claudpit** are recorded here. Versions follow semver-ish bumps.
 
+## 0.3.9
+
+### Fixed (attempt)
+- **Spacebar + CapsLock typing in the terminal.** A recent-Electron keyboard regression was
+  dropping the spacebar and mis-casing CapsLock letters inside the terminal (claudpit-only).
+  Workaround: the renderer now intercepts those specific keys and sends the correct character
+  straight to the session, bypassing the broken path. Guarded so it never interferes with
+  Portuguese accents (dead keys/IME), AltGr, or modifier combos.
+
 ## 0.3.8
 
 ### Fixed
